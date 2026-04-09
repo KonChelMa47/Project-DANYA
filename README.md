@@ -28,6 +28,27 @@ DANYAは、人間とロボットの間に「信頼」と「親しみ」を築く
 - [ ] Phase 3: 3Dプリンターを用いた頭部ロボット筐体の設計・製作
 - [ ] Phase 4: 実機を用いたHRI実験の実施
 
+## 🖥 Python Face Avatar App
+
+Web版ではなく、Pythonで動くリアルタイム顔アバターアプリを追加しました。
+
+### 特徴
+- カメラ映像から顔を検知
+- MediaPipe の表情推定を使って、口と目の動きを `avatar.glb` に反映
+- 表示は顔のみ
+- シンプルな単一ウィンドウUI
+
+### 起動方法
+```bash
+/home/daniil/Project-DANYA/.venv/bin/python main.py
+```
+
+### 必要ファイル
+- `avatar.glb`
+- `main.py`
+
+初回起動時に MediaPipe の顔ランドマーカー用モデルを自動ダウンロードします。
+
 ## 👤 Author
 **Daniil Malchenko (ダニール マルチェンコ)**
 - Kanazawa Institute of Technology (KIT)
