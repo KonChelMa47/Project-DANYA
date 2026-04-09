@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>顔だけアバター（自動口パク検索付き）</title>
+    <style>
+        /* プロジェクション用に背景を緑色（クロマキー）に固定 */
+        body { margin: 0; background-color: #00ff00; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // 1. 基本設定（シーン、カメラ、レンダラー、ライト）
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.55, 1.0); // 顔の正面にカメラを合わせる
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        
+        // 【重要】GPUによるピクセルのクリッピング（斬断）を有効化
+        renderer.localClippingEnabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1.0);
+        light.position.set(0, 2, 2);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+        // 2. 変数の準備
+        // 【変更点】単一のメッシュではなく、口パクさせる複数のメッシュとインデックスを配列で保持する
+        let jawMeshes = [];
+
+        // 【必殺技】首の高さ（Y=-1.38付近）で下半分を透明にする数学的な平面を定義
+        const clipPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.38);
+
+        // 3. モデルの読み込みと解析
+        const loader = new THREE.GLTFLoader();
+        
+        // 【キャッシュ対策】URLの末尾にランダムな文字列をつけて常に最新を読み込ませる
+        const modelUrl = 'avatar.glb?v=' + new Date().getTime();
+        
+        loader.load(modelUrl, (gltf) => {
+            const model = gltf.scene;
+            scene.add(model);
+
+            let foundBlendShapes = false;
+
+            model.traverse((child) => {
+                if (child.isMesh) {
+                    const name = child.name.toLowerCase();
+
+                    // 服（look）と靴（shoes）は完全に非表示
+                    if (name.includes("look") || name.includes("shoes")) {
+                        child.visible = false;
+                    } 
+                    // 残ったパーツ（顔、髪）にクリッピング平面を適用して首下を消す
+                    else {
+                        if (child.material) {
+                            if (Array.isArray(child.material)) {
+                                child.material.forEach(mat => mat.clippingPlanes = [clipPlane]);
+                            } else {
+                                child.material.clippingPlanes = [clipPlane];
+                            }
+                        }
+                    }
+
+                    // 【変更点】名前に依存せず、表情パラメータを持っているメッシュを総当たりで探す
+                    if (child.morphTargetDictionary) {
+                        foundBlendShapes = true;
+                        console.log(`🗣️ メッシュ「${child.name}」から表情パラメータを発見しました！`);
+                        
+                        const blendShapes = Object.keys(child.morphTargetDictionary);
+                        
+                        const jawKey = blendShapes.find(key => {
+                            const k = key.toLowerCase();
+                            return k.includes("jawopen") || k.includes("jaw_open") || k === "mouthopen";
+                        });
+
+                        if (jawKey) {
+                            console.log(`🎯 口パクパラメータ自動設定完了: ${jawKey} (メッシュ: ${child.name})`);
+                            // 【変更点】見つかったパーツを配列に追加していく
+                            jawMeshes.push({
+                                mesh: child,
+                                index: child.morphTargetDictionary[jawKey]
+                            });
+                        } else {
+                            console.warn(`⚠️ メッシュ「${child.name}」に口を開けるパラメータが見つかりません。一覧:`, blendShapes);
+                        }
+                    }
+                }
+            });
+
+            // モデル全体を探しても見つからなかった場合のエラー出力
+            if (!foundBlendShapes) {
+                console.error("❌ 【致命的エラー】モデル内の全パーツを探しましたが、表情パラメータが1つも存在しません。ダウンロードしたファイルに表情データが含まれていない可能性があります。");
+            }
+
+        });
+
+        // 4. アニメーションループ（毎フレーム実行）
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 【変更点】配列に保存された全てのパーツ（顔、歯、舌など）を同時に動かす
+            if (jawMeshes.length > 0) {
+                // サイン波で 0.0 〜 1.0 の間を滑らかに反復させる
+                const value = (Math.sin(clock.getElapsedTime() * 5) + 1) / 2;
+                jawMeshes.forEach(item => {
+                    item.mesh.morphTargetInfluences[item.index] = value;
+                });
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // ウィンドウサイズ変更時のレスポンシブ対応
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
