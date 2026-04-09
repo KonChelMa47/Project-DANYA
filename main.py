@@ -44,8 +44,9 @@ from pyglet.graphics.shader import Shader, ShaderProgram
 
 WINDOW_WIDTH = 960
 WINDOW_HEIGHT = 960
-MODEL_FILENAME = "avatar.glb"
-MODEL_CACHE = Path(".cache") / "mediapipe_face_landmarker.task"
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "assets" / "models" / "avatar.glb"
+MODEL_CACHE = BASE_DIR / ".cache" / "mediapipe_face_landmarker.task"
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
     "face_landmarker/float16/latest/face_landmarker.task"
@@ -640,7 +641,7 @@ class FaceAvatarApp(pyglet.window.Window):
         self.set_minimum_size(640, 640)
         self.camera = CameraStream()
         self.expression_tracker = self._create_tracker()
-        self.avatar = GLBAvatar(Path(MODEL_FILENAME), self)
+        self.avatar = GLBAvatar(MODEL_PATH, self)
         self.latest_weights: dict[str, float] = {}
         self.smoothed_weights: dict[str, float] = {}
         self.last_update = 0.0
