@@ -3,3 +3,6 @@ opencv-python
 numpy
 pyglet
 pillow
+requests
+soundfile
+ultralytics
