@@ -18,6 +18,7 @@ import time
 import os
 import queue
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -49,7 +50,7 @@ from pyglet.gl import (
 )
 from pyglet.graphics.shader import Shader, ShaderProgram
 
-from tts_client import play_audio, synthesize_audio
+from gpt_sovits_tts_client import play_audio, synthesize_audio
 
 WINDOW_TITLE = "DANYA Avatar"
 DISPLAY_ROTATION_DEG = 90.0
@@ -71,12 +72,15 @@ DEFAULT_TTS_OUTPUT = BASE_DIR / "runtime" / "output.wav"
 TTS_SEGMENT_DIR = BASE_DIR / "runtime" / "tts_segments"
 DEFAULT_AUDIO_DEVICE = os.environ.get("DANYA_AUDIO_DEVICE", "").strip() or None
 DEFAULT_TTS_REF_ID = os.environ.get("DANYA_TTS_REF_ID", "").strip() or None
+DEFAULT_LLM_OUTPUT_SERVER = os.environ.get("DANYA_LLM_OUTPUT_SERVER", "http://127.0.0.1:8767").strip()
+DEFAULT_LLM_OUTPUT_INTERVAL = float(os.environ.get("DANYA_LLM_OUTPUT_INTERVAL", "20"))
+DEFAULT_LLM_OUTPUT_DEBUG = os.environ.get("DANYA_LLM_OUTPUT_DEBUG", "1").strip().lower() not in {"0", "false", "off", "no"}
 YOLO_TRACKING_ENABLED = os.environ.get("DANYA_YOLO_TRACKING", "1").strip().lower() not in {"0", "false", "off", "no"}
 YOLO_MODEL_PATH = os.environ.get("DANYA_YOLO_MODEL", "yolov8n.pt")
 YOLO_CAMERA_INDEX = int(os.environ.get("DANYA_YOLO_CAMERA", "0"))
 YOLO_CONFIDENCE = float(os.environ.get("DANYA_YOLO_CONF", "0.45"))
 YOLO_FRAME_SKIP = max(1, int(os.environ.get("DANYA_YOLO_FRAME_SKIP", "2")))
-YOLO_PREVIEW_ENABLED = os.environ.get("DANYA_YOLO_PREVIEW", "1").strip().lower() not in {"0", "false", "off", "no"}
+YOLO_PREVIEW_ENABLED = os.environ.get("DANYA_YOLO_PREVIEW", "0").strip().lower() not in {"0", "false", "off", "no"}
 YOLO_PREVIEW_WIDTH = int(os.environ.get("DANYA_YOLO_PREVIEW_WIDTH", "960"))
 YOLO_PREVIEW_HEIGHT = int(os.environ.get("DANYA_YOLO_PREVIEW_HEIGHT", "540"))
 YOLO_TARGET_MAX_AGE_SEC = 1.2
@@ -190,6 +194,104 @@ class ExternalControlServer(threading.Thread):
                 self.sock.close()
             except OSError:
                 pass
+
+
+class LLMOutputReceiver(threading.Thread):
+    TAG_PATTERN = re.compile(r"^\s*<([^>]+)>\s*(.*)$", re.DOTALL)
+
+    def __init__(
+        self,
+        inbox: queue.Queue[str],
+        server_url: str,
+        interval_sec: float = DEFAULT_LLM_OUTPUT_INTERVAL,
+    ) -> None:
+        super().__init__(daemon=True)
+        self.inbox = inbox
+        self.server_url = server_url.rstrip("/")
+        self.interval_sec = max(1.0, float(interval_sec))
+        self.seq = 0
+        self.running = True
+        self.debug = DEFAULT_LLM_OUTPUT_DEBUG
+
+    def run(self) -> None:
+        try:
+            import requests
+        except Exception as exc:
+            print(f"[LLM OUTPUT WARN] requests is not available: {exc}")
+            return
+
+        print(f"[LLM OUTPUT] polling {self.server_url}/api/output every {self.interval_sec:.0f}s")
+        while self.running:
+            try:
+                response = requests.get(
+                    f"{self.server_url}/api/output",
+                    params={"since": self.seq},
+                    timeout=min(25.0, max(2.0, self.interval_sec * 0.8)),
+                )
+                response.raise_for_status()
+                data = response.json()
+                outputs = data.get("outputs", [])
+                latest_seq = int(data.get("latest_seq", self.seq))
+                if self.debug:
+                    print(
+                        f"[LLM OUTPUT] poll ok since={self.seq} count={len(outputs)} latest_seq={latest_seq}"
+                    )
+                for text in outputs:
+                    if self.debug:
+                        preview = str(text).replace("\n", " ")[:80]
+                        print(f"[LLM OUTPUT] received: {preview}")
+                    payload = self._payload_from_output(str(text))
+                    if payload:
+                        self.inbox.put(payload)
+                self.seq = max(self.seq, latest_seq)
+            except requests.exceptions.Timeout:
+                print(f"[LLM OUTPUT WARN] timeout polling {self.server_url}/api/output")
+            except Exception as exc:
+                print(f"[LLM OUTPUT WARN] {exc}")
+
+            slept = 0.0
+            while self.running and slept < self.interval_sec:
+                step = min(0.5, self.interval_sec - slept)
+                time.sleep(step)
+                slept += step
+
+    def stop(self) -> None:
+        self.running = False
+
+    @classmethod
+    def _payload_from_output(cls, output: str) -> str:
+        text = output.strip()
+        if not text:
+            return ""
+
+        match = cls.TAG_PATTERN.match(text)
+        if not match:
+            return json.dumps({"source": "llm_output", "segments": [{"text": text}]}, ensure_ascii=False)
+
+        tag = match.group(1).strip()
+        body = match.group(2).strip()
+        if not body:
+            return ""
+
+        emotion, intensity = cls._split_emotion_tag(tag)
+        segment: dict[str, str] = {"text": body}
+        if emotion:
+            segment["emotion"] = emotion
+        if intensity:
+            segment["intensity"] = intensity
+        return json.dumps({"source": "llm_output", "segments": [segment]}, ensure_ascii=False)
+
+    @staticmethod
+    def _split_emotion_tag(tag: str) -> tuple[str, str]:
+        normalized = tag.replace("-", "_").strip().lower()
+        if "|" in normalized:
+            emotion, intensity = normalized.split("|", 1)
+            return emotion.strip(), intensity.strip()
+
+        parts = [part for part in normalized.split("_") if part]
+        if len(parts) >= 2 and parts[-1] in {"high", "normal", "mid", "low"}:
+            return "_".join(parts[:-1]), parts[-1]
+        return normalized, ""
 
 
 class PersonTracker(threading.Thread):
@@ -758,7 +860,12 @@ class GLBAvatar:
         self._update_vertex_list(part, vertex_h, normal_h)
 
 class AvatarApp(pyglet.window.Window):
-    def __init__(self, launch_terminal: bool = True) -> None:
+    def __init__(
+        self,
+        launch_terminal: bool = True,
+        llm_output_server: Optional[str] = DEFAULT_LLM_OUTPUT_SERVER,
+        llm_output_interval: float = DEFAULT_LLM_OUTPUT_INTERVAL,
+    ) -> None:
         state = self._load_window_state()
         config = pyglet.gl.Config(double_buffer=True, depth_size=24)
         super().__init__(
@@ -828,6 +935,14 @@ class AvatarApp(pyglet.window.Window):
         self.speech_thread.start()
         self.control_server = ExternalControlServer(self.control_inbox)
         self.control_server.start()
+        self.llm_output_receiver: Optional[LLMOutputReceiver] = None
+        if llm_output_server:
+            self.llm_output_receiver = LLMOutputReceiver(
+                self.control_inbox,
+                llm_output_server,
+                interval_sec=llm_output_interval,
+            )
+            self.llm_output_receiver.start()
         self.person_tracker = PersonTracker()
         self.person_tracker.start()
 
@@ -1296,6 +1411,10 @@ class AvatarApp(pyglet.window.Window):
 
     def on_close(self) -> None:
         self._save_window_state()
+        if self.llm_output_receiver is not None:
+            self.llm_output_receiver.stop()
+            if self.llm_output_receiver.is_alive():
+                self.llm_output_receiver.join(timeout=1.5)
         self.control_server.stop()
         if self.control_server.is_alive():
             self.control_server.join(timeout=1.0)
@@ -1346,7 +1465,7 @@ class AvatarApp(pyglet.window.Window):
             except queue.Empty:
                 return
 
-            command, command_ref_id, command_segments = self._extract_command_payload(raw)
+            command, command_ref_id, command_segments, command_source = self._extract_command_payload(raw)
             if not command:
                 continue
             if command.lower() in {"quit", "exit"}:
@@ -1368,7 +1487,8 @@ class AvatarApp(pyglet.window.Window):
                 print(f"[TTS REF] {self.tts_ref_id or 'server default'}")
                 continue
 
-            print(f"[You] {command}")
+            label = "LLM OUTPUT" if command_source == "llm_output" else "You"
+            print(f"[{label}] {command}")
             ref_id = command_ref_id or self.tts_ref_id
             if command_segments:
                 segments = [
@@ -1387,22 +1507,23 @@ class AvatarApp(pyglet.window.Window):
                 self.speech_queue.put([SpeechSegment(reply, ref_id)])
 
     @classmethod
-    def _extract_command_payload(cls, raw: str) -> tuple[str, Optional[str], list[SpeechSegment]]:
+    def _extract_command_payload(cls, raw: str) -> tuple[str, Optional[str], list[SpeechSegment], str]:
         text = raw.strip()
         if not text:
-            return "", None, []
+            return "", None, [], ""
         if text.startswith("{"):
             try:
                 obj = json.loads(text)
             except json.JSONDecodeError:
-                return text, None, []
+                return text, None, [], ""
             ref_id = cls._normalize_ref_id(obj.get("ref_id") or obj.get("ref") or obj.get("emotion"))
             segments = cls._segments_from_payload(obj, ref_id)
             command_text = str(obj.get("text") or obj.get("message") or "").strip()
             if not command_text and segments:
                 command_text = " ".join(segment.text for segment in segments)
-            return command_text, ref_id, segments
-        return text, None, []
+            source = str(obj.get("source") or "").strip().lower()
+            return command_text, ref_id, segments, source
+        return text, None, [], ""
 
     @classmethod
     def _segments_from_payload(cls, obj: dict[str, Any], fallback_ref_id: Optional[str]) -> list[SpeechSegment]:
@@ -1671,7 +1792,7 @@ class AvatarApp(pyglet.window.Window):
         pitch = self.head_pitch + speaking_nod
         roll = self.head_roll
 
-        # Keep pose behavior consistent with main.py.
+        # Keep pose behavior consistent with mediapipe_face_avatar.py.
         yaw_m = self._rotation_x_matrix(math.radians(-yaw * 0.6))
         pitch_m = self._rotation_y_matrix(math.radians(pitch * 0.6))
         roll_m = self._rotation_z_matrix(math.radians(roll * 0.4))
@@ -1859,6 +1980,18 @@ def main() -> None:
     parser.add_argument("--no-yolo-preview", action="store_true", help="Disable YOLO preview window")
     parser.add_argument("--yolo-camera", type=int, default=YOLO_CAMERA_INDEX, help="Camera index for YOLO tracking")
     parser.add_argument("--yolo-model", default=YOLO_MODEL_PATH, help="Ultralytics YOLO model path/name")
+    parser.add_argument(
+        "--llm-output-server",
+        default=DEFAULT_LLM_OUTPUT_SERVER,
+        help="LLM output server URL for /api/output polling",
+    )
+    parser.add_argument(
+        "--llm-output-interval",
+        type=float,
+        default=DEFAULT_LLM_OUTPUT_INTERVAL,
+        help="Seconds between LLM output polls",
+    )
+    parser.add_argument("--no-llm-output", action="store_true", help="Disable LLM output polling")
     args = parser.parse_args()
 
     if args.control:
@@ -1870,7 +2003,12 @@ def main() -> None:
     YOLO_CAMERA_INDEX = args.yolo_camera
     YOLO_MODEL_PATH = args.yolo_model
 
-    AvatarApp(launch_terminal=not args.no_control_terminal)
+    llm_output_server = None if args.no_llm_output else args.llm_output_server
+    AvatarApp(
+        launch_terminal=not args.no_control_terminal,
+        llm_output_server=llm_output_server,
+        llm_output_interval=args.llm_output_interval,
+    )
     pyglet.app.run()
 
 if __name__ == "__main__":

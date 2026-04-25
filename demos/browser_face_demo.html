@@ -42,7 +42,7 @@
         const loader = new THREE.GLTFLoader();
         
         // 【キャッシュ対策】URLの末尾にランダムな文字列をつけて常に最新を読み込ませる
-        const modelUrl = 'avatar.glb?v=' + new Date().getTime();
+        const modelUrl = '../assets/models/avatar.glb?v=' + new Date().getTime();
         
         loader.load(modelUrl, (gltf) => {
             const model = gltf.scene;
