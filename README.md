@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" alt="DANYA logo" width="220">
+  <img src="./logo.png" alt="DANYA logo" width="880">
 </p>
 
 # Project DANYA
