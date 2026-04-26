@@ -1,0 +1,6 @@
+ultralytics
+opencv-python
+numpy
+langchain
+langchain-openai
+python-dotenv

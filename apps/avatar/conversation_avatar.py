@@ -50,15 +50,17 @@ from pyglet.gl import (
 )
 from pyglet.graphics.shader import Shader, ShaderProgram
 
-from gpt_sovits_tts_client import play_audio, synthesize_audio
+from tts_client import play_audio, synthesize_audio
 
 WINDOW_TITLE = "DANYA Avatar"
 DISPLAY_ROTATION_DEG = 90.0
 WARP_GRID_COLS = 5
 WARP_GRID_ROWS = 5
 MAX_WARP_POINTS = 64
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "assets" / "models" / "avatar.glb"
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parents[1]
+BASE_DIR = PROJECT_ROOT
+MODEL_PATH = PROJECT_ROOT / "assets" / "models" / "avatar.glb"
 # アニメーション保存/再生の既定パス（runtime配下）
 ANIMATION_DATA_PATH = BASE_DIR / "runtime" / "motion_records" / "animation_data.json"
 # 旧パス互換: 既存データがある場合はこちらも読み込み対象にする
@@ -70,6 +72,11 @@ EMOTION_MOTION_ALIASES = {
 DEFAULT_TTS_SERVER = os.environ.get("DANYA_TTS_SERVER", "http://192.168.73.239:8000")
 DEFAULT_TTS_OUTPUT = BASE_DIR / "runtime" / "output.wav"
 TTS_SEGMENT_DIR = BASE_DIR / "runtime" / "tts_segments"
+TTS_SEGMENT_MAX_CHARS = max(12, int(os.environ.get("DANYA_TTS_SEGMENT_MAX_CHARS", "42")))
+TTS_RETRY_MAX = max(1, int(os.environ.get("DANYA_TTS_RETRY_MAX", "1")))
+TTS_FALLBACK_MIN_CHARS = max(4, int(os.environ.get("DANYA_TTS_FALLBACK_MIN_CHARS", "14")))
+TTS_FALLBACK_RETRY_MAX = max(1, int(os.environ.get("DANYA_TTS_FALLBACK_RETRY_MAX", "1")))
+TTS_STABLE_REF_ID = os.environ.get("DANYA_TTS_STABLE_REF_ID", "happy_high").strip() or None
 DEFAULT_AUDIO_DEVICE = os.environ.get("DANYA_AUDIO_DEVICE", "").strip() or None
 DEFAULT_TTS_REF_ID = os.environ.get("DANYA_TTS_REF_ID", "").strip() or None
 DEFAULT_LLM_OUTPUT_SERVER = os.environ.get("DANYA_LLM_OUTPUT_SERVER", "http://127.0.0.1:8767").strip()
@@ -99,8 +106,8 @@ EMOTION_LEVEL_ALIASES = {
     "mid": "normal",
     "low": "normal",
 }
-CONTROL_HOST = "127.0.0.1"
-CONTROL_PORT = 8765
+CONTROL_HOST = os.environ.get("DANYA_CONTROL_HOST", "127.0.0.1")
+CONTROL_PORT = int(os.environ.get("DANYA_CONTROL_PORT", "8766"))
 WINDOW_STATE_PATH = BASE_DIR / ".cache" / "window_state.json"
 LIPSYNC_FRAME_SEC = 0.032
 LIPSYNC_HOP_SEC = 0.010
@@ -264,14 +271,50 @@ class LLMOutputReceiver(threading.Thread):
         if not text:
             return ""
 
-        match = cls.TAG_PATTERN.match(text)
-        if not match:
+        parsed_segments = cls._segments_from_tagged_output(text)
+        if not parsed_segments:
             return json.dumps({"source": "llm_output", "segments": [{"text": text}]}, ensure_ascii=False)
 
+        return json.dumps({"source": "llm_output", "segments": parsed_segments}, ensure_ascii=False)
+
+    @classmethod
+    def _segments_from_tagged_output(cls, text: str) -> list[dict[str, str]]:
+        segments: list[dict[str, str]] = []
+        current: Optional[dict[str, str]] = None
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            match = cls.TAG_PATTERN.match(line)
+            if not match:
+                if current is not None:
+                    current["text"] = f"{current['text']}\n{line}".strip()
+                else:
+                    segments.append({"text": line})
+                continue
+
+            tag = match.group(1).strip()
+            body = match.group(2).strip()
+            if not body:
+                continue
+            emotion, intensity = cls._split_emotion_tag(tag)
+            current = {"text": body}
+            if emotion:
+                current["emotion"] = emotion
+            if intensity:
+                current["intensity"] = intensity
+            segments.append(current)
+
+        if segments:
+            return segments
+
+        match = cls.TAG_PATTERN.match(text)
+        if not match:
+            return []
         tag = match.group(1).strip()
         body = match.group(2).strip()
         if not body:
-            return ""
+            return []
 
         emotion, intensity = cls._split_emotion_tag(tag)
         segment: dict[str, str] = {"text": body}
@@ -279,7 +322,7 @@ class LLMOutputReceiver(threading.Thread):
             segment["emotion"] = emotion
         if intensity:
             segment["intensity"] = intensity
-        return json.dumps({"source": "llm_output", "segments": [segment]}, ensure_ascii=False)
+        return [segment]
 
     @staticmethod
     def _split_emotion_tag(tag: str) -> tuple[str, str]:
@@ -1699,42 +1742,310 @@ class AvatarApp(pyglet.window.Window):
             if segments is None:
                 return
             segments = [segment for segment in segments if segment.text.strip()]
+            segments = self._split_speech_segments(segments)
             if not segments:
                 continue
 
             batch_id = int(time.time() * 1000)
             TTS_SEGMENT_DIR.mkdir(parents=True, exist_ok=True)
-            max_workers = min(3, max(1, len(segments)))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                for index, segment in enumerate(segments):
-                    out_path = TTS_SEGMENT_DIR / f"tts_{batch_id}_{index:02d}.wav"
-                    futures.append(executor.submit(self._synthesize_speech_segment, segment, out_path))
+            first_success_path: Optional[Path] = None
+            failed_count = 0
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                next_index = 0
 
-                for future in futures:
-                    ok, reason, segment, out_path = future.result()
+                def submit_next() -> Optional[concurrent.futures.Future]:
+                    nonlocal next_index
+                    if next_index >= len(segments):
+                        return None
+                    segment = segments[next_index]
+                    out_path = TTS_SEGMENT_DIR / f"tts_{batch_id}_{next_index:02d}.wav"
+                    print(f"[TTS] synth {next_index + 1}/{len(segments)}: {segment.text[:36]}")
+                    future = executor.submit(self._synthesize_speech_segment, segment, out_path)
+                    next_index += 1
+                    return future
+
+                future = submit_next()
+                current_index = 0
+                while future is not None:
+                    ok, reason, synthesized_parts = future.result()
+                    future = submit_next()
+                    current_index += 1
                     if not ok:
                         print(f"[TTS ERROR] {reason[:110]}")
+                        failed_count += 1
                         continue
-                    self._play_speech_segment(segment, out_path)
+                    for spoken_segment, spoken_path in synthesized_parts:
+                        if first_success_path is None:
+                            first_success_path = spoken_path
+                        print(f"[TTS] play {current_index}/{len(segments)}")
+                        self._play_speech_segment(spoken_segment, spoken_path)
 
-            try:
-                shutil.copyfile(str(TTS_SEGMENT_DIR / f"tts_{batch_id}_00.wav"), str(self.tts_output))
-            except Exception:
-                pass
+            if failed_count:
+                print(f"[TTS WARN] skipped {failed_count}/{len(segments)} chunk(s) after all client fallbacks")
+
+            if first_success_path is not None:
+                try:
+                    shutil.copyfile(str(first_success_path), str(self.tts_output))
+                except Exception:
+                    pass
+
+    @classmethod
+    def _split_speech_segments(cls, segments: list[SpeechSegment]) -> list[SpeechSegment]:
+        split_segments: list[SpeechSegment] = []
+        for segment in segments:
+            for text in cls._split_text_for_tts(segment.text, TTS_SEGMENT_MAX_CHARS):
+                split_segments.append(SpeechSegment(text, segment.ref_id))
+        split_segments = cls._merge_short_speech_segments(split_segments, TTS_SEGMENT_MAX_CHARS)
+        if len(split_segments) > len(segments):
+            print(
+                f"[TTS] split {len(segments)} segment(s) into {len(split_segments)} chunk(s) "
+                f"(max {TTS_SEGMENT_MAX_CHARS} chars)"
+            )
+        return split_segments
+
+    @staticmethod
+    def _merge_short_speech_segments(
+        segments: list[SpeechSegment],
+        max_chars: int,
+    ) -> list[SpeechSegment]:
+        if not segments:
+            return []
+        merged: list[SpeechSegment] = []
+        for segment in segments:
+            text = segment.text.strip()
+            if not text:
+                continue
+            if (
+                merged
+                and merged[-1].ref_id == segment.ref_id
+                and len(merged[-1].text) + len(text) + 1 <= max_chars
+                and (len(merged[-1].text) < TTS_FALLBACK_MIN_CHARS or len(text) < TTS_FALLBACK_MIN_CHARS)
+            ):
+                merged[-1] = SpeechSegment(f"{merged[-1].text} {text}", segment.ref_id)
+            else:
+                merged.append(SpeechSegment(text, segment.ref_id))
+        return merged
+
+    @staticmethod
+    def _split_text_for_tts(text: str, max_chars: int) -> list[str]:
+        normalized = AvatarApp._normalize_text_for_tts_retry(text)
+        if len(normalized) <= max_chars:
+            return [normalized] if normalized else []
+
+        def split_long_part(part: str) -> list[str]:
+            pieces = [piece.strip() for piece in re.findall(r"[^、,]+[、,]?", part) if piece.strip()]
+            if not pieces:
+                pieces = [part]
+            result: list[str] = []
+            current_piece = ""
+            for piece in pieces:
+                if len(piece) > max_chars:
+                    if current_piece:
+                        result.append(current_piece)
+                        current_piece = ""
+                    result.extend(piece[start : start + max_chars] for start in range(0, len(piece), max_chars))
+                    continue
+                if current_piece and len(current_piece) + len(piece) > max_chars:
+                    result.append(current_piece)
+                    current_piece = ""
+                current_piece += piece
+            if current_piece:
+                result.append(current_piece)
+            return result
+
+        sentence_parts = [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]?", normalized) if part.strip()]
+        chunks: list[str] = []
+        current = ""
+
+        def flush_current() -> None:
+            nonlocal current
+            if current:
+                chunks.append(current)
+                current = ""
+
+        for part in sentence_parts:
+            if len(part) > max_chars:
+                flush_current()
+                chunks.extend(split_long_part(part))
+                continue
+            if current and len(current) + len(part) > max_chars:
+                flush_current()
+            current += part
+        flush_current()
+        return chunks
 
     def _synthesize_speech_segment(
         self,
         segment: SpeechSegment,
         out_path: Path,
-    ) -> tuple[bool, str, SpeechSegment, Path]:
-        ok, reason = synthesize_audio(
-            server_url=self.tts_server,
-            text=segment.text,
-            out_path=out_path,
-            ref_id=segment.ref_id,
+    ) -> tuple[bool, str, list[tuple[SpeechSegment, Path]]]:
+        return self._synthesize_speech_segment_with_fallback(segment, out_path)
+
+    def _synthesize_safe_batch(
+        self,
+        segments: list[SpeechSegment],
+        batch_id: int,
+    ) -> list[tuple[SpeechSegment, Path]]:
+        safe_text = " ".join(self._normalize_text_for_tts_retry(segment.text) for segment in segments)
+        safe_chunks = self._split_text_for_tts(safe_text, TTS_FALLBACK_MIN_CHARS)
+        synthesized_parts: list[tuple[SpeechSegment, Path]] = []
+        for index, chunk in enumerate(safe_chunks):
+            if not chunk.strip():
+                continue
+            safe_segment = SpeechSegment(chunk, TTS_STABLE_REF_ID)
+            safe_path = TTS_SEGMENT_DIR / f"tts_{batch_id}_safe_{index:02d}.wav"
+            ok, reason = self._try_synthesize_variants(safe_segment, safe_path)
+            if not ok:
+                print(f"[TTS SAFE ERROR] {index + 1}/{len(safe_chunks)} {reason[:90]}")
+                return []
+            synthesized_parts.append((safe_segment, safe_path))
+        return synthesized_parts
+
+    def _synthesize_speech_segment_with_fallback(
+        self,
+        segment: SpeechSegment,
+        out_path: Path,
+        depth: int = 0,
+    ) -> tuple[bool, str, list[tuple[SpeechSegment, Path]]]:
+        ok, reason = self._try_synthesize_variants(segment, out_path, retry_max=TTS_RETRY_MAX)
+        if ok:
+            return True, "OK", [(segment, out_path)]
+
+        normalized_text = self._normalize_text_for_tts_retry(segment.text)
+        if normalized_text and normalized_text != segment.text:
+            normalized_path = out_path.with_name(f"{out_path.stem}_clean{out_path.suffix}")
+            normalized_segment = SpeechSegment(normalized_text, segment.ref_id)
+            ok_clean, reason_clean = self._try_synthesize_variants(normalized_segment, normalized_path)
+            if ok_clean:
+                print(f"[TTS RECOVER] normalized text: {segment.text[:28]}")
+                return True, "OK", [(normalized_segment, normalized_path)]
+            reason = f"{reason}; clean={reason_clean}"
+
+        if segment.ref_id:
+            default_path = out_path.with_name(f"{out_path.stem}_default{out_path.suffix}")
+            default_segment = SpeechSegment(normalized_text or segment.text, None)
+            ok_default, reason_default = self._try_synthesize_variants(default_segment, default_path)
+            if ok_default:
+                print(f"[TTS RECOVER] default voice: {segment.text[:28]}")
+                return True, "OK", [(default_segment, default_path)]
+            reason = f"{reason}; default_ref={reason_default}"
+
+        retry_chunks = self._split_text_for_tts(normalized_text or segment.text, self._fallback_chunk_size(segment.text))
+        if len(retry_chunks) <= 1:
+            return False, reason, []
+
+        print(
+            f"[TTS RECOVER] split failed chunk into {len(retry_chunks)} smaller chunk(s): "
+            f"{segment.text[:36]}"
         )
-        return ok, reason, segment, out_path
+        synthesized_parts: list[tuple[SpeechSegment, Path]] = []
+        failures: list[str] = []
+        for index, chunk_text in enumerate(retry_chunks):
+            chunk_path = out_path.with_name(f"{out_path.stem}_r{depth}_{index:02d}{out_path.suffix}")
+            chunk_segment = SpeechSegment(chunk_text, segment.ref_id)
+            ok_chunk, reason_chunk, chunk_parts = self._synthesize_speech_segment_with_fallback(
+                chunk_segment,
+                chunk_path,
+                depth + 1,
+            )
+            if ok_chunk:
+                synthesized_parts.extend(chunk_parts)
+            else:
+                failures.append(f"{index + 1}/{len(retry_chunks)}: {reason_chunk[:80]}")
+
+        if failures:
+            return False, "; ".join(failures), synthesized_parts
+        return True, "OK", synthesized_parts
+
+    def _try_synthesize_variants(
+        self,
+        segment: SpeechSegment,
+        out_path: Path,
+        retry_max: int = TTS_FALLBACK_RETRY_MAX,
+    ) -> tuple[bool, str]:
+        text = segment.text.strip()
+        if not text:
+            return False, "Text is empty"
+
+        attempts: list[tuple[str, Optional[str]]] = []
+        if TTS_STABLE_REF_ID:
+            attempts.append((text, TTS_STABLE_REF_ID))
+        attempts.append((text, segment.ref_id))
+        soft_text = self._soften_text_for_tts(text)
+        if soft_text != text:
+            if TTS_STABLE_REF_ID:
+                attempts.append((soft_text, TTS_STABLE_REF_ID))
+            attempts.append((soft_text, segment.ref_id))
+
+        for ref_id in self._fallback_ref_ids(segment.ref_id):
+            attempts.append((soft_text, ref_id))
+
+        seen: set[tuple[str, Optional[str]]] = set()
+        reasons: list[str] = []
+        for attempt_index, (attempt_text, ref_id) in enumerate(attempts):
+            key = (attempt_text, ref_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            attempt_path = out_path if attempt_index == 0 else out_path.with_name(
+                f"{out_path.stem}_v{attempt_index}{out_path.suffix}"
+            )
+            ok, reason = synthesize_audio(
+                server_url=self.tts_server,
+                text=attempt_text,
+                out_path=attempt_path,
+                ref_id=ref_id,
+                retry_max=retry_max,
+            )
+            if ok:
+                if attempt_path != out_path:
+                    try:
+                        shutil.copyfile(str(attempt_path), str(out_path))
+                    except Exception:
+                        return True, "OK"
+                return True, "OK"
+            reasons.append(f"ref={ref_id or 'default'} {reason[:70]}")
+        return False, "; ".join(reasons)
+
+    @staticmethod
+    def _fallback_ref_ids(ref_id: Optional[str]) -> list[Optional[str]]:
+        refs: list[Optional[str]] = []
+        if ref_id and "_" in ref_id:
+            emotion = ref_id.split("_", 1)[0]
+            refs.append(f"{emotion}_normal")
+        refs.extend([TTS_STABLE_REF_ID, None])
+        result: list[Optional[str]] = []
+        for ref in refs:
+            if ref == ref_id or ref in result:
+                continue
+            result.append(ref)
+        return result
+
+    @staticmethod
+    def _soften_text_for_tts(text: str) -> str:
+        softened = text.replace("！", "。").replace("!", "。").replace("？", "。").replace("?", "。")
+        softened = re.sub(r"[、,]+", "、", softened)
+        softened = re.sub(r"[。]{2,}", "。", softened)
+        return softened.strip()
+
+    @staticmethod
+    def _normalize_text_for_tts_retry(text: str) -> str:
+        normalized = re.sub(r"<[^>\n]{1,32}>", "", text)
+        normalized = re.sub(r"[\u200b-\u200f\u202a-\u202e]", "", normalized)
+        normalized = re.sub(r"(?<![A-Za-z0-9])KIT(?![A-Za-z0-9])", "ケーアイティー", normalized)
+        normalized = re.sub(r"(?<![A-Za-z0-9])AI(?![A-Za-z0-9])", "エーアイ", normalized)
+        normalized = normalized.replace("…", "。").replace("―", "-").replace("〜", "ー")
+        normalized = re.sub(r"[!?！？]{3,}", "！", normalized)
+        normalized = re.sub(r"[。]{3,}", "。", normalized)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        return normalized
+
+    @staticmethod
+    def _fallback_chunk_size(text: str) -> int:
+        current_len = len(text.strip())
+        if current_len <= TTS_FALLBACK_MIN_CHARS * 2:
+            return current_len
+        return max(TTS_FALLBACK_MIN_CHARS, min(TTS_SEGMENT_MAX_CHARS - 1, math.ceil(current_len / 2)))
 
     def _play_speech_segment(self, segment: SpeechSegment, out_path: Path) -> None:
         timeline = self._build_lipsync_timeline(out_path)
@@ -1792,7 +2103,7 @@ class AvatarApp(pyglet.window.Window):
         pitch = self.head_pitch + speaking_nod
         roll = self.head_roll
 
-        # Keep pose behavior consistent with mediapipe_face_avatar.py.
+        # Keep pose behavior consistent with face_motion_avatar.py.
         yaw_m = self._rotation_x_matrix(math.radians(-yaw * 0.6))
         pitch_m = self._rotation_y_matrix(math.radians(pitch * 0.6))
         roll_m = self._rotation_z_matrix(math.radians(roll * 0.4))

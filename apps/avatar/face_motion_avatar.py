@@ -71,9 +71,11 @@ PIP_WIDTH = 240
 PIP_HEIGHT = 180
 PIP_PADDING = 16
 PIP_UPDATE_HZ = 15.0
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "assets" / "models" / "avatar.glb"
-MODEL_CACHE = BASE_DIR / ".cache" / "mediapipe_face_landmarker.task"
+APP_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = APP_DIR.parents[1]
+BASE_DIR = PROJECT_ROOT
+MODEL_PATH = PROJECT_ROOT / "assets" / "models" / "avatar.glb"
+MODEL_CACHE = PROJECT_ROOT / ".cache" / "mediapipe_face_landmarker.task"
 MODEL_URL = (
     "https://storage.googleapis.com/mediapipe-models/face_landmarker/"
     "face_landmarker/float16/latest/face_landmarker.task"
