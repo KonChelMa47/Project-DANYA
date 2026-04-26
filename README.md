@@ -4,20 +4,41 @@
 
 # Project DANYA
 
-DANYAは、人間とロボットの間にある「自然な対話」を研究するためのアバター/音声/LLM連携プロジェクトです。現在のリポジトリには、MediaPipeで顔の動きを取得してアバターへ反映するアプリ、LLM出力を受けてGPT-SoVITSで読み上げる会話アバター、TTSサーバー、デモ用の仮LLMサーバーが入っています。
+DANYAは、人間とロボットの間にある「自然な対話」を研究するためのアバター/音声/LLM連携プロジェクトです。
 
-## 主要アプリ
+## Directory Map
 
-| ファイル | 役割 |
+```text
+Project-DANYA/
+├── apps/
+│   ├── avatar/          # アバター表示、表情、口パク、TTSクライアント
+│   ├── tts/             # GPT-SoVITS HTTPサーバー
+│   └── demo_servers/    # LLM出力モック、Open Campus Demo連携ブリッジ
+├── open-campus-demo-v1/ # オープンキャンパスで使ったデモ本体
+│   ├── launchers/       # デモ起動スクリプト
+│   └── services/
+│       ├── visitor_tracker/
+│       └── conversation_agent/
+├── assets/              # GLBモデルなど
+├── data/                # 旧互換データ
+├── runtime/             # 実行時生成物
+├── scripts/             # 複数アプリをまとめて起動する補助スクリプト
+└── tools/
+```
+
+## Main Apps
+
+| Path | Role |
 | --- | --- |
-| `mediapipe_face_avatar.py` | MediaPipe Face Landmarkerから表情・顔向きデータを取り、`avatar.glb` に反映する単体アバターアプリ |
-| `danya_conversation_avatar.py` | LLM出力APIを受信し、TTS音声・表情・口パク・YOLO視線制御を行う会話アバター |
-| `gpt_sovits_tts_server.py` | GPT-SoVITSをHTTP APIとして動かすTTSサーバー |
-| `gpt_sovits_tts_client.py` | TTSサーバーへリクエストし、WAV保存・再生を行うクライアント |
-| `demos/llm_output_demo_server.py` | `<emotion_tag>本文` を20秒ごとに返すデモ用LLM出力サーバー |
-| `demos/browser_face_demo.html` | Three.jsでGLBの顔表示と口パクを確認するブラウザデモ |
+| `apps/avatar/face_motion_avatar.py` | MediaPipe Face Landmarkerから表情・顔向きデータを取り、`avatar.glb` に反映する単体アバター |
+| `apps/avatar/conversation_avatar.py` | LLM出力APIを受信し、TTS音声・表情・口パク・YOLO視線制御を行う会話アバター |
+| `apps/avatar/tts_client.py` | TTSサーバーへリクエストし、WAV保存・再生を行うクライアント |
+| `apps/tts/gpt_sovits_server.py` | GPT-SoVITSをHTTP APIとして動かすTTSサーバー |
+| `apps/demo_servers/llm_output_demo_server.py` | `<emotion_tag>本文` を20秒ごとに返すデモ用LLM出力サーバー |
+| `apps/demo_servers/open_campus_speech_bridge.py` | Open Campus Demo v1の発話HTTPサーバーを会話アバター用 `/api/output` に変換するブリッジ |
+| `apps/demo_servers/browser_face_demo.html` | Three.jsでGLBの顔表示と口パクを確認するブラウザデモ |
 
-## セットアップ
+## Setup
 
 ```bash
 python3 -m venv .venv
@@ -25,140 +46,59 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-MediaPipeアプリは初回起動時にFace Landmarkerモデルを `.cache/` にダウンロードします。ネットワークがない環境では、先にモデルをキャッシュしておいてください。
-
-## MediaPipeアバター
-
-カメラ映像から顔を検出し、MediaPipeのblendshapeをアバターの表情へ反映します。
+Open Campus Demo v1も使う場合:
 
 ```bash
-.venv/bin/python mediapipe_face_avatar.py
+python3 -m pip install -r open-campus-demo-v1/services/conversation_agent/requirements.txt
+python3 -m pip install -r open-campus-demo-v1/services/visitor_tracker/requirements.txt
 ```
 
-主な用途:
+## Run
 
-- MediaPipeの表情データ取得確認
-- アバターGLBの表情パラメータ確認
-- プロジェクション表示や顔だけ表示の調整
-
-## 会話アバター
-
-LLM出力サーバーの `/api/output?since=<seq>` をポーリングし、`outputs` に入った文字列をTTSへ渡します。
+MediaPipe単体アバター:
 
 ```bash
-.venv/bin/python danya_conversation_avatar.py
+.venv/bin/python apps/avatar/face_motion_avatar.py
 ```
 
-既定値:
-
-- LLM出力サーバー: `http://127.0.0.1:8767`
-- ポーリング間隔: `20` 秒
-- TTSサーバー: `http://192.168.73.239:8000`
-- YOLOプレビュー: OFF
-
-設定例:
+会話アバター:
 
 ```bash
-DANYA_LLM_OUTPUT_SERVER=http://192.168.186.180:8767 \
-DANYA_TTS_SERVER=http://192.168.73.239:8000 \
-.venv/bin/python danya_conversation_avatar.py
+.venv/bin/python apps/avatar/conversation_avatar.py
 ```
 
-YOLOプレビューを見たい場合:
+デモ用LLMサーバー付きで会話アバターを起動:
 
 ```bash
-DANYA_YOLO_PREVIEW=1 .venv/bin/python danya_conversation_avatar.py
+scripts/start_conversation_demo.sh
 ```
 
-## デモ用LLMサーバー
-
-本物のLLMサーバーがない時に、仮の出力を20秒ごとに返します。
+Open Campus Demo v1の自律発話をアバターへ接続:
 
 ```bash
-.venv/bin/python demos/llm_output_demo_server.py
+scripts/start_open_campus_avatar.sh
 ```
 
-すぐ1件出してテストしたい場合:
+このコマンドは、visitor tracker、conversation agent、発話ブリッジ、3Dアバター画面をまとめて起動します。
+
+Open Campus Demo v1の発話だけを確認:
 
 ```bash
-.venv/bin/python demos/llm_output_demo_server.py --immediate
+cd open-campus-demo-v1
+python3 launchers/run_camera_terminal_demo.py --debug-mode
 ```
 
-確認用URL:
-
-```text
-http://127.0.0.1:8767/api/health
-http://127.0.0.1:8767/api/output?since=0
-```
-
-レスポンス例:
-
-```json
-{
-  "outputs": [
-    "<happy|mid>こんにちは、今日もええ感じに動いてるね。次は何を話そっか。"
-  ],
-  "latest_seq": 1
-}
-```
-
-## GPT-SoVITS TTSサーバー
-
-GPT-SoVITSのモデルを読み込み、`/tts` と `/tts_batch` を提供します。モデルパスは `gpt_sovits_tts_server.py` 内の固定設定を使います。
+GPT-SoVITS TTSサーバー:
 
 ```bash
-.venv/bin/python gpt_sovits_tts_server.py
+.venv/bin/python apps/tts/gpt_sovits_server.py
 ```
 
-tmuxで監視付き起動する場合:
-
-```bash
-scripts/start_tts_tmux.sh
-```
-
-API:
-
-- `GET /health`
-- `GET /refs`
-- `POST /tts`
-- `POST /tts_batch`
-
-## ディレクトリ構成
-
-```text
-Project-DANYA/
-├── logo.png
-├── README.md
-├── requirements.txt
-├── mediapipe_face_avatar.py
-├── danya_conversation_avatar.py
-├── gpt_sovits_tts_server.py
-├── gpt_sovits_tts_client.py
-├── assets/
-│   └── models/
-│       ├── avatar.glb
-│       ├── avatar_nohair.glb
-│       └── avatar_without_animation.glb
-├── data/
-│   └── animation_data.json
-├── demos/
-│   ├── browser_face_demo.html
-│   └── llm_output_demo_server.py
-├── scripts/
-│   ├── start_tts_tmux.sh
-│   └── tts_server_supervisor.sh
-└── tools/
-    └── check_wav.py
-```
+## Runtime Notes
 
 `runtime/` と `.cache/` は実行時に作られる作業ディレクトリです。ログ、TTS音声、ウィンドウ状態、MediaPipeモデルキャッシュなどが入ります。
 
-## 開発メモ
-
-- LLM出力形式は `<emotion_tag>本文` です。
-- `happy|mid` と `happy_mid` の両方を受け付けます。
-- `mid` と `low` はTTS参照音声では `normal` に正規化されます。
-- 会話アバターはLLM受信ログを出します。不要な場合は `DANYA_LLM_OUTPUT_DEBUG=0` を指定してください。
+Open Campus Demo v1の環境変数は `open-campus-demo-v1/services/visitor_tracker/.env` に置きます。`.env.example` をコピーして使ってください。
 
 ## Author
 

@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+services/visitor_tracker/logs/
+services/conversation_agent/dynamic_rag/event_logs/
+
+# YOLO / Ultralytics 重み（リポジトリには含めない。初回実行時に取得する）
+*.pt
+yolov8*.pt

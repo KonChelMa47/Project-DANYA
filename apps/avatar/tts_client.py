@@ -11,12 +11,12 @@ import requests
 import soundfile as sf
 
 # --- 判定基準を現実的な数値に引き上げ ---
-RETRY_MAX = 5
-RETRY_WAIT_SEC = 1.0
+RETRY_MAX = int(os.environ.get("DANYA_TTS_RETRY_MAX", "2"))
+RETRY_WAIT_SEC = float(os.environ.get("DANYA_TTS_RETRY_WAIT_SEC", "0.3"))
 MIN_DURATION_SEC = 0.5  # 0.5秒未満は短すぎると判定
 MIN_PEAK = 0.05         # 0.008程度だと「ほぼ無音」なので、0.05（約-26dB）を境界に設定
 MIN_RMS = 0.01          # 全体の平均音量もチェック
-REQUEST_TIMEOUT = 600
+REQUEST_TIMEOUT = float(os.environ.get("DANYA_TTS_REQUEST_TIMEOUT", "45"))
 
 
 def _run_player(cmd: list[str]) -> tuple[bool, str]:

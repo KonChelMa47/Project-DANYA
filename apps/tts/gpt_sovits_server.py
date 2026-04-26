@@ -5,6 +5,7 @@ import os
 import sys
 import tempfile
 import threading
+from urllib.parse import parse_qs
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ import numpy as np
 import soundfile as sf
 import torch
 import uvicorn
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 # =========================================================
@@ -40,15 +41,15 @@ EMOTION_LEVEL_ALIASES = {
 REF_PRESETS = {
     "happy_normal": {
         "audio": "../wavs/recitation_008.wav",
-        "text": "中国の外交団にアタッシェとして派遣された。",
+        "text": "えー今日はありがとうございます。あーそのプロダクト評価してもらえたらうれしいっすね。",
     },
     "happy_high": {
         "audio": "happy_high.wav",
-        "text": "やばい、本当に嬉しすぎて今ちょっとテンション上がりすぎてる！",
+        "text": "えそんな気に入ってくれたんすか？うわーめっちゃうれしいっす！えーぜひぜひ、ぜひ一緒に組みたいです。",
     },
     "angry_normal": {
         "audio": "angry_normal.wav",
-        "text": "それはちょっとやり方が違うと思うから、一度ちゃんと話したい。",
+        "text": "おいおい、まてまて！お前それ、触らんといて！それ触ったら壊れちゃうからさ。",
     },
     "angry_high": {
         "audio": "angry_high.wav",
@@ -56,11 +57,11 @@ REF_PRESETS = {
     },
     "sad_normal": {
         "audio": "sad_normal.wav",
-        "text": "今日はなんだかうまくいかなくて、少し気持ちが沈んでるんだ。",
+        "text": "えー未踏落ちたん？あんなにポスターがんばったんになー",
     },
     "sad_high": {
         "audio": "sad_high.wav",
-        "text": "もうどうしたらいいのか分からなくて、本当に心が苦しいよ。",
+        "text": "ね！あんなにがんばったんになんでそんなこと言うの。悲しいねんけど！",
     },
     "fear_normal": {
         "audio": "fear_normal.wav",
@@ -72,11 +73,11 @@ REF_PRESETS = {
     },
     "surprised_normal": {
         "audio": "surprised_normal.wav",
-        "text": "今のちょっと意外だったね、そんな展開になると思わなかった。",
+        "text": "おお！久しぶり。大阪から来たんやねこんなとこまで。いやーでもびっくりしたわー",
     },
     "surprised_high": {
         "audio": "surprised_high.wav",
-        "text": "え、ちょっと待って今の何！？全然予想してなかったんだけど！",
+        "text": "え、お前もしかして。え？東京からきたんここまでわざわざ。やっば！",
     },
 }
 
@@ -363,9 +364,29 @@ def refs():
     return _refs_payload()
 
 
+async def _extract_tts_payload(request: Request) -> dict[str, Any]:
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type == "application/json":
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("JSON payload must be an object")
+        return payload
+
+    raw_body = (await request.body()).decode("utf-8")
+    form_payload = {key: values[-1] for key, values in parse_qs(raw_body, keep_blank_values=True).items()}
+    if form_payload:
+        return form_payload
+    return dict(request.query_params)
+
+
 @app.post("/tts")
-async def tts(text: str = Form(...), ref_id: str | None = Form(None)):
+async def tts(request: Request):
     try:
+        payload = await _extract_tts_payload(request)
+        text = str(payload.get("text") or payload.get("message") or "").strip()
+        if not text:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "Text is empty"})
+        ref_id = payload.get("ref_id") or payload.get("ref") or payload.get("emotion")
         wav_bytes = _synthesize_to_wav_bytes(text, ref_id=ref_id)
         return Response(
             content=wav_bytes,
@@ -413,4 +434,4 @@ async def tts_batch(request: Request):
 
 
 if __name__ == "__main__":
-    uvicorn.run("gpt_sovits_tts_server:app", host="0.0.0.0", port=8000, reload=False, workers=1)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False, workers=1)
