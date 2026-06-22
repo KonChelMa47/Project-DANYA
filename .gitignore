@@ -1,4 +1,5 @@
-.cache/
+.cache/*
+!.cache/window_state.json
 __pycache__/
 *.pyc
 .venv/
