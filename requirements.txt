@@ -6,3 +6,4 @@ pillow
 requests
 soundfile
 ultralytics
+PySide6
