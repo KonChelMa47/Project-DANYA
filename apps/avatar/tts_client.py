@@ -13,10 +13,12 @@ import soundfile as sf
 # --- 判定基準を現実的な数値に引き上げ ---
 RETRY_MAX = int(os.environ.get("DANYA_TTS_RETRY_MAX", "2"))
 RETRY_WAIT_SEC = float(os.environ.get("DANYA_TTS_RETRY_WAIT_SEC", "0.3"))
-MIN_DURATION_SEC = 0.5  # 0.5秒未満は短すぎると判定
-MIN_PEAK = 0.05         # 0.008程度だと「ほぼ無音」なので、0.05（約-26dB）を境界に設定
-MIN_RMS = 0.01          # 全体の平均音量もチェック
+MIN_DURATION_SEC = float(os.environ.get("DANYA_TTS_MIN_DURATION_SEC", "0.35"))
+MIN_PEAK = float(os.environ.get("DANYA_TTS_MIN_PEAK", "0.003"))
+MIN_RMS = float(os.environ.get("DANYA_TTS_MIN_RMS", "0.0005"))
 REQUEST_TIMEOUT = float(os.environ.get("DANYA_TTS_REQUEST_TIMEOUT", "45"))
+DEFAULT_LANGUAGE = os.environ.get("DANYA_TTS_LANGUAGE", "ja").strip() or "ja"
+OUTPUT_GAIN = max(0.1, float(os.environ.get("DANYA_TTS_GAIN", "8.0")))
 
 
 def _run_player(cmd: list[str]) -> tuple[bool, str]:
@@ -64,23 +66,24 @@ def play_audio(filepath: Path, audio_device: str | None = None) -> tuple[bool, s
 def server_health(server_url: str) -> bool:
     try:
         r = requests.get(f"{server_url.rstrip('/')}/health", timeout=5)
-        return r.status_code == 200 and r.json().get("ok") is True
+        payload = r.json()
+        return r.status_code == 200 and (payload.get("ok") is True or payload.get("status") == "ok")
     except Exception:
         return False
 
-def tts_request(server_url: str, text: str, ref_id: str | None = None) -> bytes:
-    # 多くのGPT-soVITS APIで採用されているパラメータを追加
-    # 推論が不安定な場合は top_p や temp を調整できるように設計
+def tts_request(
+    server_url: str,
+    text: str,
+    ref_id: str | None = None,
+    language: str | None = None,
+) -> bytes:
     data = {
+        "language": (language or DEFAULT_LANGUAGE).strip() or DEFAULT_LANGUAGE,
         "text": text,
-        "text_language": "ja", # 必要に応じて変更
-        "top_p": 1, 
-        "temperature": 1,
-        "speed": 1.0
     }
     if ref_id:
         data["ref_id"] = ref_id
-    r = requests.post(f"{server_url.rstrip('/')}/tts", data=data, timeout=REQUEST_TIMEOUT)
+    r = requests.post(f"{server_url.rstrip('/')}/tts", json=data, timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         raise RuntimeError(f"server error {r.status_code}: {r.text}")
     return r.content
@@ -114,7 +117,15 @@ def is_valid_audio(content: bytes) -> tuple[bool, str]:
 
 def save_content(content: bytes, out_path: Path):
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(content)
+    if abs(OUTPUT_GAIN - 1.0) < 1e-6:
+        out_path.write_bytes(content)
+        return
+    try:
+        data, sr = sf.read(io.BytesIO(content), dtype="float32")
+        boosted = np.clip(data * OUTPUT_GAIN, -0.98, 0.98)
+        sf.write(out_path, boosted, sr, subtype="PCM_16")
+    except Exception:
+        out_path.write_bytes(content)
 
 
 def synthesize_audio(
@@ -122,6 +133,7 @@ def synthesize_audio(
     text: str,
     out_path: Path,
     ref_id: str | None = None,
+    language: str | None = None,
     retry_max: int = RETRY_MAX,
     retry_wait_sec: float = RETRY_WAIT_SEC,
 ) -> tuple[bool, str]:
@@ -132,7 +144,12 @@ def synthesize_audio(
 
     for attempt in range(1, retry_max + 1):
         try:
-            content = tts_request(server_url=server_url, text=normalized_text, ref_id=ref_id)
+            content = tts_request(
+                server_url=server_url,
+                text=normalized_text,
+                ref_id=ref_id,
+                language=language,
+            )
             valid, reason = is_valid_audio(content)
             if not valid:
                 if attempt < retry_max:
@@ -157,6 +174,7 @@ def synthesize_and_play(
     text: str,
     out_path: Path,
     ref_id: str | None = None,
+    language: str | None = None,
     retry_max: int = RETRY_MAX,
     retry_wait_sec: float = RETRY_WAIT_SEC,
     audio_device: str | None = None,
@@ -171,6 +189,7 @@ def synthesize_and_play(
         text=text,
         out_path=out_path,
         ref_id=ref_id,
+        language=language,
         retry_max=retry_max,
         retry_wait_sec=retry_wait_sec,
     )
@@ -183,6 +202,7 @@ def main():
     parser.add_argument("--server", required=True, help="Server URL")
     parser.add_argument("--out", default="runtime/output.wav", help="Output wav path")
     parser.add_argument("--ref", default="", help="Reference voice id, e.g. happy_high or sad_mid")
+    parser.add_argument("--language", default=DEFAULT_LANGUAGE, help="TTS language, e.g. ja or ru")
     parser.add_argument("--audio-device", default="", help="Output device/sink name")
     args = parser.parse_args()
 
@@ -202,7 +222,12 @@ def main():
                 print(f"Sending... (attempt {attempt}/{RETRY_MAX})", end="\r")
                 
                 try:
-                    content = tts_request(server_url=args.server, text=text, ref_id=args.ref or None)
+                    content = tts_request(
+                        server_url=args.server,
+                        text=text,
+                        ref_id=args.ref or None,
+                        language=args.language,
+                    )
                     valid, reason = is_valid_audio(content)
                     
                     if valid:

@@ -4,20 +4,17 @@ import argparse
 import base64
 import bisect
 import concurrent.futures
+import html
+import http.server
 import io
 import json
 import math
-import shlex
 import shutil
-import socket
 import struct
-import subprocess
-import sys
 import threading
 import time
 import os
 import queue
-import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -69,31 +66,33 @@ MOTION_RECORD_DIR = BASE_DIR / "runtime" / "motion_records"
 EMOTION_MOTION_ALIASES = {
     "happy": "smile",
 }
-DEFAULT_TTS_SERVER = os.environ.get("DANYA_TTS_SERVER", "http://192.168.73.239:8000")
+TTS_PROVIDER_URLS = {
+    "gpt-sovits": "http://127.0.0.1:8000",
+    "gptsovits": "http://127.0.0.1:8000",
+    "cosyvoice": "http://192.168.73.239:8010",
+}
+DEFAULT_TTS_PROVIDER = os.environ.get("DANYA_TTS_PROVIDER", "gpt-sovits").strip().lower() or "gpt-sovits"
+DEFAULT_TTS_SERVER = os.environ.get(
+    "DANYA_TTS_SERVER",
+    TTS_PROVIDER_URLS.get(DEFAULT_TTS_PROVIDER, TTS_PROVIDER_URLS["gpt-sovits"]),
+)
+DEFAULT_TTS_LANGUAGE = os.environ.get("DANYA_TTS_LANGUAGE", "ja").strip() or "ja"
+DEFAULT_CONTROL_HOST = os.environ.get("DANYA_CONTROL_HOST", "0.0.0.0")
+DEFAULT_CONTROL_PORT = int(os.environ.get("DANYA_CONTROL_PORT", "8020"))
 DEFAULT_TTS_OUTPUT = BASE_DIR / "runtime" / "output.wav"
 TTS_SEGMENT_DIR = BASE_DIR / "runtime" / "tts_segments"
 TTS_SEGMENT_MAX_CHARS = max(12, int(os.environ.get("DANYA_TTS_SEGMENT_MAX_CHARS", "42")))
+TTS_SEGMENT_GAP_SEC = max(0.0, float(os.environ.get("DANYA_TTS_SEGMENT_GAP_SEC", "0.04")))
 TTS_RETRY_MAX = max(1, int(os.environ.get("DANYA_TTS_RETRY_MAX", "1")))
 TTS_FALLBACK_MIN_CHARS = max(4, int(os.environ.get("DANYA_TTS_FALLBACK_MIN_CHARS", "14")))
 TTS_FALLBACK_RETRY_MAX = max(1, int(os.environ.get("DANYA_TTS_FALLBACK_RETRY_MAX", "1")))
-TTS_STABLE_REF_ID = os.environ.get("DANYA_TTS_STABLE_REF_ID", "happy_high").strip() or None
+TTS_STABLE_REF_ID = os.environ.get("DANYA_TTS_STABLE_REF_ID", "").strip() or None
+TTS_SEND_REF_ID = os.environ.get("DANYA_TTS_SEND_REF_ID", "0").strip().lower() in {"1", "true", "on", "yes"}
 DEFAULT_AUDIO_DEVICE = os.environ.get("DANYA_AUDIO_DEVICE", "").strip() or None
 DEFAULT_TTS_REF_ID = os.environ.get("DANYA_TTS_REF_ID", "").strip() or None
 DEFAULT_LLM_OUTPUT_SERVER = os.environ.get("DANYA_LLM_OUTPUT_SERVER", "http://127.0.0.1:8767").strip()
 DEFAULT_LLM_OUTPUT_INTERVAL = float(os.environ.get("DANYA_LLM_OUTPUT_INTERVAL", "20"))
 DEFAULT_LLM_OUTPUT_DEBUG = os.environ.get("DANYA_LLM_OUTPUT_DEBUG", "1").strip().lower() not in {"0", "false", "off", "no"}
-YOLO_TRACKING_ENABLED = os.environ.get("DANYA_YOLO_TRACKING", "1").strip().lower() not in {"0", "false", "off", "no"}
-YOLO_MODEL_PATH = os.environ.get("DANYA_YOLO_MODEL", "yolov8n.pt")
-YOLO_CAMERA_INDEX = int(os.environ.get("DANYA_YOLO_CAMERA", "0"))
-YOLO_CONFIDENCE = float(os.environ.get("DANYA_YOLO_CONF", "0.45"))
-YOLO_FRAME_SKIP = max(1, int(os.environ.get("DANYA_YOLO_FRAME_SKIP", "2")))
-YOLO_PREVIEW_ENABLED = os.environ.get("DANYA_YOLO_PREVIEW", "0").strip().lower() not in {"0", "false", "off", "no"}
-YOLO_PREVIEW_WIDTH = int(os.environ.get("DANYA_YOLO_PREVIEW_WIDTH", "960"))
-YOLO_PREVIEW_HEIGHT = int(os.environ.get("DANYA_YOLO_PREVIEW_HEIGHT", "540"))
-YOLO_TARGET_MAX_AGE_SEC = 1.2
-PERSON_LOOK_SIDE_YAW_DEG = 16.0
-PERSON_LOOK_CENTER_DEADZONE = 0.18
-PERSON_LOOK_BLEND_WHEN_SPEAKING = 0.75
 DEFAULT_EMOTION_INTENSITY = "normal"
 EMOTION_REF_PREFIXES = {"happy", "angry", "sad", "surprised", "fear"}
 EMOTION_REF_ALIASES = {
@@ -106,8 +105,6 @@ EMOTION_LEVEL_ALIASES = {
     "mid": "normal",
     "low": "normal",
 }
-CONTROL_HOST = os.environ.get("DANYA_CONTROL_HOST", "127.0.0.1")
-CONTROL_PORT = int(os.environ.get("DANYA_CONTROL_PORT", "8766"))
 WINDOW_STATE_PATH = BASE_DIR / ".cache" / "window_state.json"
 LIPSYNC_FRAME_SEC = 0.032
 LIPSYNC_HOP_SEC = 0.010
@@ -125,6 +122,69 @@ SPEECH_LIPSYNC_KEYS = {
 EXPRESSION_LIPSYNC_OVERRIDE_KEYS = {
     "jawopen",
     "mouthopen",
+}
+
+GAZE_KEYS = {
+    "eyelookdownleft",
+    "eyelookdownright",
+    "eyelookinleft",
+    "eyelookinright",
+    "eyelookoutleft",
+    "eyelookoutright",
+    "eyelookupleft",
+    "eyelookupright",
+}
+GAZE_MAX_WEIGHT = 0.34
+GAZE_SMOOTH_GAIN = 0.045
+GAZE_DECAY_GAIN = 0.035
+BLINK_INTERVAL_MIN_SEC = 2.2
+BLINK_INTERVAL_MAX_SEC = 5.8
+BLINK_CLOSE_SEC = 0.075
+BLINK_HOLD_SEC = 0.045
+BLINK_OPEN_SEC = 0.13
+
+BLINK_KEYS = {
+    "eyesclosed",
+    "eyeblinkleft",
+    "eyeblinkright",
+}
+
+EYE_CONFLICT_KEYS = GAZE_KEYS | {
+    "eyeslookup",
+    "eyeslookdown",
+    "eyesquintleft",
+    "eyesquintright",
+    "eyewideleft",
+    "eyewideright",
+}
+
+MOUTH_KEYS = {
+    "jawopen",
+    "mouthopen",
+    "mouthpucker",
+    "mouthfunnel",
+    "mouthclose",
+    "mouthsmile",
+    "mouthsmileleft",
+    "mouthsmileright",
+    "mouthstretchleft",
+    "mouthstretchright",
+    "mouthpressleft",
+    "mouthpressright",
+    "mouthlowerdownleft",
+    "mouthlowerdownright",
+    "mouthdimpleleft",
+    "mouthdimpleright",
+    "mouthrolllower",
+    "mouthrollupper",
+    "mouthshruglower",
+    "mouthshrugupper",
+    "mouthright",
+    "mouthleft",
+    "mouthroundleft",
+    "mouthroundright",
+    "mouthupperupleft",
+    "mouthupperupright",
 }
 
 FACE_MESHES = {
@@ -148,59 +208,427 @@ ALIAS_WEIGHTS = {
     "browinnerup": ["browraise"],
     "browraise": ["browinnerup"],
 }
-class ExternalControlServer(threading.Thread):
-    def __init__(self, inbox: queue.Queue[str], host: str = CONTROL_HOST, port: int = CONTROL_PORT) -> None:
-        super().__init__(daemon=True)
-        self.inbox = inbox
+
+@dataclass
+class MeshPart:
+    name: str
+    vertex_list: Any
+    texture: Optional[Any]
+    alpha_mode: str
+    base_positions: np.ndarray
+    base_normals: np.ndarray
+    base_texcoords: np.ndarray
+    indices: np.ndarray
+    morph_names: list[str]
+    morph_positions: np.ndarray
+    morph_normals: np.ndarray
+    mesh_transform: np.ndarray
+    normal_transform: np.ndarray
+
+
+@dataclass
+class SpeechSegment:
+    text: str
+    ref_id: Optional[str] = None
+    language: str = DEFAULT_TTS_LANGUAGE
+
+
+class ControlWindow:
+    def __init__(self, on_submit: Any, host: str = DEFAULT_CONTROL_HOST, port: int = DEFAULT_CONTROL_PORT) -> None:
+        self.on_submit = on_submit
         self.host = host
         self.port = port
-        self.running = True
-        self.sock: Optional[socket.socket] = None
+        self.httpd: Optional[http.server.ThreadingHTTPServer] = None
+        self.thread: Optional[threading.Thread] = None
 
-    def run(self) -> None:
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    def start(self) -> None:
+        on_submit = self.on_submit
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: Any) -> None:
+                print(f"[CONTROL WEB] {self.client_address[0]} - {format % args}")
+
+            def do_GET(self) -> None:  # noqa: N802
+                if self.path == "/health":
+                    self._send_json({"ok": True, "service": "danya-avatar-control"})
+                    return
+                if self.path not in {"/", "/index.html"}:
+                    self.send_error(404)
+                    return
+                body = ControlWindow._html().encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self) -> None:  # noqa: N802
+                if self.path != "/speak":
+                    self.send_error(404)
+                    return
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    raw_body = self.rfile.read(length)
+                    payload = json.loads(raw_body.decode("utf-8"))
+                    text = str(payload.get("text") or payload.get("message") or "").strip()
+                    if not text:
+                        self._send_json({"ok": False, "error": "Text is empty"}, status=400)
+                        return
+                    on_submit(json.dumps(payload, ensure_ascii=False))
+                    self._send_json({"ok": True, "queued": True})
+                except Exception as exc:
+                    self._send_json({"ok": False, "error": str(exc)}, status=500)
+
+            def _send_json(self, payload: dict[str, Any], status: int = 200) -> None:
+                body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
         try:
-            server.bind((self.host, self.port))
-            server.listen(5)
-            server.settimeout(0.5)
-            self.sock = server
-        except OSError as exc:
-            print(f"[CONTROL ERROR] Could not bind {self.host}:{self.port}: {exc}")
-            try:
-                server.close()
-            except OSError:
-                pass
+            self.httpd = http.server.ThreadingHTTPServer((self.host, self.port), Handler)
+        except Exception as exc:
+            print(f"[CONTROL ERROR] Could not start web control UI: {exc}")
             return
-        while self.running:
-            try:
-                conn, _addr = server.accept()
-            except socket.timeout:
-                continue
-            except OSError:
-                break
 
-            with conn:
-                chunks: list[bytes] = []
-                while True:
-                    part = conn.recv(4096)
-                    if not part:
-                        break
-                    chunks.append(part)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        print(f"[CONTROL WEB] open http://127.0.0.1:{self.port}/")
+        if self.host in {"0.0.0.0", "::"}:
+            print(f"[CONTROL WEB] from phone: http://<this-pc-ip>:{self.port}/")
 
-                payload = b"".join(chunks).decode("utf-8", errors="ignore")
-                for raw_line in payload.splitlines():
-                    line = raw_line.strip()
-                    if line:
-                        self.inbox.put(line)
+    def close_from_app(self) -> None:
+        if self.httpd is not None:
+            self.httpd.shutdown()
+            self.httpd.server_close()
+            self.httpd = None
 
-    def stop(self) -> None:
-        self.running = False
-        if self.sock is not None:
-            try:
-                self.sock.close()
-            except OSError:
-                pass
+    @staticmethod
+    def _html() -> str:
+        sample_ja = html.escape("こんにちは。今日は日本語の音声合成を確認しています。")
+        sample_ru = html.escape("Привет. Это проверка выбора русского языка.")
+        return f"""<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DANYA Control</title>
+<style>
+:root {{
+  color-scheme: light;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ink: #18201f;
+  --muted: #66736f;
+  --line: #d7e3df;
+  --paper: #fbfffd;
+  --panel: rgba(255, 255, 255, 0.92);
+  --mint: #00a88f;
+  --mint-dark: #007f6d;
+  --coral: #ff6b4a;
+  --gold: #f2b705;
+  --blue: #2176ff;
+  --shadow: 0 18px 50px rgba(20, 70, 64, 0.16);
+}}
+* {{ box-sizing: border-box; }}
+body {{
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(0, 168, 143, 0.20), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(255, 107, 74, 0.20), transparent 30%),
+    linear-gradient(135deg, #f3fbf7 0%, #fff8ec 54%, #eef8ff 100%);
+}}
+main {{ width: min(940px, 100%); margin: 0 auto; padding: 18px; }}
+.topbar {{ display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 4px 0 16px; }}
+.brand {{ display: flex; align-items: center; gap: 12px; min-width: 0; }}
+.mark {{
+  width: 46px; height: 46px; border-radius: 8px;
+  background: linear-gradient(135deg, var(--mint), #3ed7b5 54%, var(--gold));
+  box-shadow: 0 10px 24px rgba(0, 168, 143, 0.28);
+}}
+h1 {{ margin: 0; font-size: 34px; line-height: 1; letter-spacing: 0; }}
+.sub {{ color: var(--muted); font-size: 13px; margin-top: 4px; }}
+.status-pill {{
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 127, 109, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--mint-dark);
+  border-radius: 999px;
+  padding: 8px 11px;
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 8px 24px rgba(20, 70, 64, 0.08);
+}}
+.shell {{
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  gap: 14px;
+  align-items: start;
+}}
+.panel {{
+  background: var(--panel);
+  border: 1px solid rgba(215, 227, 223, 0.92);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}}
+.composer {{ padding: 16px; }}
+.side {{ display: grid; gap: 12px; }}
+.tools {{ padding: 14px; }}
+.field-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+label {{ display: block; font-weight: 900; font-size: 13px; margin: 0 0 7px; color: #25302d; }}
+select, textarea, button, input {{ width: 100%; font: inherit; border-radius: 8px; }}
+select, textarea {{
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--ink);
+  padding: 13px 12px;
+  outline: none;
+}}
+select:focus, textarea:focus {{ border-color: var(--mint); box-shadow: 0 0 0 4px rgba(0, 168, 143, 0.15); }}
+textarea {{ min-height: 260px; resize: vertical; line-height: 1.55; font-size: 17px; }}
+.meter {{ display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; margin: 8px 0 12px; }}
+.presets {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }}
+.quick {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }}
+button {{
+  min-height: 48px;
+  border: 0;
+  background: var(--mint);
+  color: #fff;
+  font-weight: 900;
+  padding: 13px 14px;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 12px 28px rgba(0, 168, 143, 0.26);
+}}
+button:active {{ transform: translateY(1px); filter: brightness(0.96); }}
+button:disabled {{ cursor: wait; opacity: 0.62; }}
+button.secondary {{ background: #ffffff; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }}
+button.emotion {{ min-height: 42px; padding: 9px 10px; background: #ffffff; color: #26312e; border: 1px solid var(--line); box-shadow: none; font-size: 13px; }}
+button.emotion.active {{ color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--mint), var(--blue)); }}
+#send {{
+  min-height: 62px;
+  font-size: 20px;
+  background: linear-gradient(135deg, var(--coral), #ff8e51 48%, var(--gold));
+  box-shadow: 0 16px 34px rgba(255, 107, 74, 0.28);
+}}
+.sendbar {{
+  position: sticky;
+  bottom: 0;
+  margin: 0 -16px -16px;
+  padding: 12px 16px 16px;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0), rgba(251, 255, 253, 0.96) 32%);
+}}
+#status {{ min-height: 24px; margin-top: 10px; color: var(--muted); font-weight: 800; }}
+#status.sending {{ color: var(--blue); }}
+#status.ok {{ color: var(--mint-dark); }}
+#status.error {{ color: #c43328; }}
+.stat {{ padding: 13px; }}
+.stat-title {{ font-size: 12px; color: var(--muted); font-weight: 900; text-transform: uppercase; letter-spacing: 0; }}
+.stat-value {{ margin-top: 6px; font-weight: 900; overflow-wrap: anywhere; }}
+.history-list {{ display: grid; gap: 8px; margin-top: 10px; max-height: 340px; overflow: auto; }}
+.history-item {{
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 8px;
+  padding: 10px;
+  color: #33403c;
+  font-size: 13px;
+  line-height: 1.45;
+}}
+.history-meta {{ color: var(--muted); font-weight: 800; margin-bottom: 4px; }}
+@media (max-width: 760px) {{
+  main {{ padding: 12px; }}
+  .topbar {{ align-items: flex-start; }}
+  .shell, .field-grid {{ grid-template-columns: 1fr; }}
+  .side {{ grid-template-columns: 1fr 1fr; }}
+  textarea {{ min-height: 230px; }}
+  h1 {{ font-size: 28px; }}
+}}
+@media (max-width: 560px) {{
+  .mark {{ width: 40px; height: 40px; }}
+  .status-pill {{ display: none; }}
+  .side, .presets, .quick {{ grid-template-columns: 1fr; }}
+  textarea {{ min-height: 260px; font-size: 18px; }}
+}}
+</style>
+</head>
+<body>
+<main>
+<header class="topbar">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"></div>
+    <div>
+      <h1>DANYA Voice Deck</h1>
+      <div class="sub">スマホから文章を送って、そのままアバターに喋らせる</div>
+    </div>
+  </div>
+  <div id="server" class="status-pill">checking...</div>
+</header>
+
+<div class="shell">
+<section class="panel composer">
+<div class="field-grid">
+  <div>
+    <label for="language">Language</label>
+    <select id="language">
+      <option value="ja">Japanese</option>
+      <option value="ru">Russian</option>
+    </select>
+  </div>
+  <div>
+    <label for="emotion">Voice mood</label>
+    <select id="emotion">
+      <option value="neutral">Neutral</option>
+      <option value="happy">Happy</option>
+      <option value="sad">Sad</option>
+      <option value="angry">Angry</option>
+      <option value="surprised">Surprised</option>
+      <option value="fear">Fear</option>
+    </select>
+  </div>
+</div>
+
+<div style="margin-top: 14px;">
+  <label for="text">Script</label>
+  <textarea id="text" autocomplete="off" spellcheck="false">{sample_ja}</textarea>
+  <div class="meter"><span id="count">0 chars</span><span>送信後、TTSキューに入ります</span></div>
+</div>
+
+<div class="presets" aria-label="Emotion presets">
+  <button type="button" class="emotion active" data-emotion="neutral">Neutral</button>
+  <button type="button" class="emotion" data-emotion="happy">Happy</button>
+  <button type="button" class="emotion" data-emotion="surprised">Surprised</button>
+  <button type="button" class="emotion" data-emotion="sad">Sad</button>
+  <button type="button" class="emotion" data-emotion="angry">Angry</button>
+  <button type="button" class="emotion" data-emotion="fear">Fear</button>
+</div>
+
+<div class="sendbar">
+<button id="send" type="button">Speak Now</button>
+<div id="status"></div>
+</div>
+</section>
+
+<aside class="side">
+  <section class="panel tools">
+    <div class="stat-title">Samples</div>
+    <div class="quick">
+      <button type="button" class="secondary" data-lang="ja" data-text="{sample_ja}">Japanese sample</button>
+      <button type="button" class="secondary" data-lang="ru" data-text="{sample_ru}">Russian sample</button>
+    </div>
+  </section>
+  <section class="panel stat">
+    <div class="stat-title">Phone URL</div>
+    <div id="phoneUrl" class="stat-value">このPCのIP:ポートで開いてください</div>
+  </section>
+  <section class="panel stat">
+    <div class="stat-title">Recent sends</div>
+    <div id="history" class="history-list"></div>
+  </section>
+</aside>
+</div>
+</main>
+<script>
+const text = document.getElementById('text');
+const language = document.getElementById('language');
+const emotion = document.getElementById('emotion');
+const status = document.getElementById('status');
+const server = document.getElementById('server');
+const history = document.getElementById('history');
+const send = document.getElementById('send');
+const count = document.getElementById('count');
+const phoneUrl = document.getElementById('phoneUrl');
+const emotionButtons = Array.from(document.querySelectorAll('[data-emotion]'));
+function setStatus(message, mode = '') {{
+  status.className = mode;
+  status.textContent = message;
+}}
+function updateCount() {{
+  count.textContent = `${{text.value.length}} chars`;
+}}
+function setEmotion(value) {{
+  emotion.value = value;
+  emotionButtons.forEach((button) => button.classList.toggle('active', button.dataset.emotion === value));
+}}
+function addHistory(payload) {{
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'history-item';
+  const when = new Date().toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit', second: '2-digit' }});
+  item.innerHTML = `<div class="history-meta">${{when}} · ${{payload.language}} · ${{payload.emotion || 'neutral'}}</div><div>${{payload.text.replace(/[&<>]/g, (c) => ({{'&':'&amp;','<':'&lt;','>':'&gt;'}}[c]))}}</div>`;
+  item.addEventListener('click', () => {{
+    language.value = payload.language;
+    setEmotion(payload.emotion || 'neutral');
+    text.value = payload.text;
+    updateCount();
+    text.focus();
+  }});
+  history.prepend(item);
+  while (history.children.length > 8) history.lastElementChild.remove();
+}}
+async function checkAvatar() {{
+  try {{
+    const res = await fetch('/health', {{ cache: 'no-store' }});
+    const data = await res.json();
+    server.textContent = data.ok ? 'Connected' : 'Control error';
+  }} catch (err) {{
+    server.textContent = 'Unreachable';
+  }}
+}}
+phoneUrl.textContent = window.location.origin;
+updateCount();
+checkAvatar();
+setInterval(checkAvatar, 5000);
+text.addEventListener('input', updateCount);
+emotion.addEventListener('change', () => setEmotion(emotion.value));
+emotionButtons.forEach((button) => {{
+  button.addEventListener('click', () => setEmotion(button.dataset.emotion));
+}});
+document.querySelectorAll('[data-text]').forEach((button) => {{
+  button.addEventListener('click', () => {{
+    language.value = button.dataset.lang;
+    text.value = button.dataset.text;
+    updateCount();
+    text.focus();
+  }});
+}});
+send.addEventListener('click', async () => {{
+  const payload = {{ language: language.value, text: text.value.trim() }};
+  if (emotion.value !== 'neutral') payload.emotion = emotion.value;
+  if (!payload.text) {{
+    setStatus('Text is empty', 'error');
+    text.focus();
+    return;
+  }}
+  send.disabled = true;
+  send.textContent = 'Sending...';
+  setStatus('Sending to avatar...', 'sending');
+  try {{
+    const res = await fetch('/speak', {{
+      method: 'POST',
+      headers: {{ 'Content-Type': 'application/json' }},
+      body: JSON.stringify(payload),
+    }});
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || `request failed (${{res.status}})`);
+    const queuedAt = new Date().toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit', second: '2-digit' }});
+    setStatus(`Queued at ${{queuedAt}}`, 'ok');
+    addHistory(payload);
+    text.select();
+  }} catch (err) {{
+    setStatus(`Error: ${{err.message}}`, 'error');
+  }} finally {{
+    send.disabled = false;
+    send.textContent = 'Speak Now';
+  }}
+}});
+</script>
+</body>
+</html>"""
 
 
 class LLMOutputReceiver(threading.Thread):
@@ -215,7 +643,7 @@ class LLMOutputReceiver(threading.Thread):
         super().__init__(daemon=True)
         self.inbox = inbox
         self.server_url = server_url.rstrip("/")
-        self.interval_sec = max(1.0, float(interval_sec))
+        self.interval_sec = max(0.2, float(interval_sec))
         self.seq = 0
         self.running = True
         self.debug = DEFAULT_LLM_OUTPUT_DEBUG
@@ -227,7 +655,7 @@ class LLMOutputReceiver(threading.Thread):
             print(f"[LLM OUTPUT WARN] requests is not available: {exc}")
             return
 
-        print(f"[LLM OUTPUT] polling {self.server_url}/api/output every {self.interval_sec:.0f}s")
+        print(f"[LLM OUTPUT] polling {self.server_url}/api/output every {self.interval_sec:.1f}s")
         while self.running:
             try:
                 response = requests.get(
@@ -240,9 +668,7 @@ class LLMOutputReceiver(threading.Thread):
                 outputs = data.get("outputs", [])
                 latest_seq = int(data.get("latest_seq", self.seq))
                 if self.debug:
-                    print(
-                        f"[LLM OUTPUT] poll ok since={self.seq} count={len(outputs)} latest_seq={latest_seq}"
-                    )
+                    print(f"[LLM OUTPUT] poll ok since={self.seq} count={len(outputs)} latest_seq={latest_seq}")
                 for text in outputs:
                     if self.debug:
                         preview = str(text).replace("\n", " ")[:80]
@@ -336,179 +762,6 @@ class LLMOutputReceiver(threading.Thread):
             return "_".join(parts[:-1]), parts[-1]
         return normalized, ""
 
-
-class PersonTracker(threading.Thread):
-    def __init__(
-        self,
-        enabled: bool = YOLO_TRACKING_ENABLED,
-        camera_index: int = YOLO_CAMERA_INDEX,
-        model_path: str = YOLO_MODEL_PATH,
-        confidence: float = YOLO_CONFIDENCE,
-        frame_skip: int = YOLO_FRAME_SKIP,
-        preview: bool = YOLO_PREVIEW_ENABLED,
-    ) -> None:
-        super().__init__(daemon=True)
-        self.enabled = enabled
-        self.camera_index = camera_index
-        self.model_path = model_path
-        self.confidence = confidence
-        self.frame_skip = frame_skip
-        self.preview = preview
-        self.running = True
-        self.lock = threading.Lock()
-        self.target: Optional[dict[str, float]] = None
-
-    def run(self) -> None:
-        if not self.enabled:
-            return
-        try:
-            import cv2
-            from ultralytics import YOLO
-        except Exception as exc:
-            print(f"[YOLO WARN] Person tracking disabled: {exc}")
-            return
-
-        try:
-            model = YOLO(self.model_path)
-            cap = cv2.VideoCapture(self.camera_index)
-            if not cap.isOpened():
-                print(f"[YOLO WARN] Could not open camera index {self.camera_index}")
-                return
-        except Exception as exc:
-            print(f"[YOLO WARN] Could not start person tracker: {exc}")
-            return
-
-        print(f"[YOLO] Person tracking started: camera={self.camera_index}, model={self.model_path}")
-        frame_index = 0
-        try:
-            while self.running:
-                ok, frame = cap.read()
-                if not ok:
-                    time.sleep(0.05)
-                    continue
-                frame_index += 1
-                if frame_index % self.frame_skip != 0:
-                    if self.preview:
-                        self._show_preview(cv2, frame, None)
-                    continue
-                best = self._detect_person(model, frame)
-                if self.preview:
-                    self._show_preview(cv2, frame, best)
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        self.running = False
-        finally:
-            try:
-                cap.release()
-            except Exception:
-                pass
-            if self.preview:
-                try:
-                    cv2.destroyWindow("DANYA YOLO Person View")
-                except Exception:
-                    pass
-
-    def stop(self) -> None:
-        self.running = False
-
-    def get_target(self) -> Optional[dict[str, float]]:
-        with self.lock:
-            if not self.target:
-                return None
-            age = time.time() - self.target.get("seen_at", 0.0)
-            if age > YOLO_TARGET_MAX_AGE_SEC:
-                return None
-            return dict(self.target)
-
-    def _detect_person(self, model: Any, frame: Any) -> Optional[tuple[float, float, float, float]]:
-        height, width = frame.shape[:2]
-        try:
-            results = model.predict(frame, classes=[0], conf=self.confidence, verbose=False)
-        except Exception:
-            return None
-
-        best = None
-        best_area = 0.0
-        for result in results:
-            boxes = getattr(result, "boxes", None)
-            if boxes is None:
-                continue
-            for box in boxes:
-                xyxy = box.xyxy[0].detach().cpu().numpy()
-                x1, y1, x2, y2 = [float(v) for v in xyxy]
-                area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-                if area > best_area:
-                    best_area = area
-                    best = (x1, y1, x2, y2)
-
-        if best is None:
-            return None
-
-        x1, y1, x2, y2 = best
-        center_x = ((x1 + x2) * 0.5) / max(width, 1)
-        center_y = ((y1 + y2) * 0.5) / max(height, 1)
-        with self.lock:
-            self.target = {
-                "x": float(np.clip(center_x, 0.0, 1.0)),
-                "y": float(np.clip(center_y, 0.0, 1.0)),
-                "area": float(best_area / max(width * height, 1)),
-                "seen_at": time.time(),
-            }
-        return best
-
-    def _show_preview(self, cv2: Any, frame: Any, box: Optional[tuple[float, float, float, float]]) -> None:
-        height, width = frame.shape[:2]
-        left_line = int(width * (0.5 - PERSON_LOOK_CENTER_DEADZONE))
-        right_line = int(width * (0.5 + PERSON_LOOK_CENTER_DEADZONE))
-        cv2.line(frame, (left_line, 0), (left_line, height), (80, 220, 255), 2)
-        cv2.line(frame, (right_line, 0), (right_line, height), (80, 220, 255), 2)
-
-        label = "no person"
-        if box is not None:
-            x1, y1, x2, y2 = [int(v) for v in box]
-            cx = (x1 + x2) // 2
-            if cx < left_line:
-                label = "person: LEFT"
-            elif cx > right_line:
-                label = "person: RIGHT"
-            else:
-                label = "person: CENTER"
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 120), 3)
-            cv2.circle(frame, (cx, (y1 + y2) // 2), 7, (0, 255, 120), -1)
-
-        cv2.putText(
-            frame,
-            label,
-            (24, 44),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1.1,
-            (0, 255, 120) if box is not None else (80, 80, 255),
-            3,
-            cv2.LINE_AA,
-        )
-        preview = cv2.resize(frame, (YOLO_PREVIEW_WIDTH, YOLO_PREVIEW_HEIGHT))
-        cv2.imshow("DANYA YOLO Person View", preview)
-
-@dataclass
-class MeshPart:
-    name: str
-    vertex_list: Any
-    texture: Optional[Any]
-    alpha_mode: str
-    base_positions: np.ndarray
-    base_normals: np.ndarray
-    base_texcoords: np.ndarray
-    indices: np.ndarray
-    morph_names: list[str]
-    morph_positions: np.ndarray
-    morph_normals: np.ndarray
-    mesh_transform: np.ndarray
-    normal_transform: np.ndarray
-
-
-@dataclass
-class SpeechSegment:
-    text: str
-    ref_id: Optional[str] = None
 
 class GLBAvatar:
     def __init__(self, glb_path: Path) -> None:
@@ -906,17 +1159,22 @@ class AvatarApp(pyglet.window.Window):
     def __init__(
         self,
         launch_terminal: bool = True,
+        control_host: str = DEFAULT_CONTROL_HOST,
+        control_port: int = DEFAULT_CONTROL_PORT,
+        start_fullscreen: Optional[bool] = None,
+        static_avatar: bool = False,
         llm_output_server: Optional[str] = DEFAULT_LLM_OUTPUT_SERVER,
         llm_output_interval: float = DEFAULT_LLM_OUTPUT_INTERVAL,
     ) -> None:
         state = self._load_window_state()
+        fullscreen = bool(state.get("fullscreen", False)) if start_fullscreen is None else start_fullscreen
         config = pyglet.gl.Config(double_buffer=True, depth_size=24)
         super().__init__(
             caption=WINDOW_TITLE,
             width=int(state.get("width", 1280)),
             height=int(state.get("height", 720)),
             resizable=True,
-            fullscreen=bool(state.get("fullscreen", False)),
+            fullscreen=fullscreen,
             config=config,
             vsync=True,
         )
@@ -946,16 +1204,20 @@ class AvatarApp(pyglet.window.Window):
         self.loop_transition_duration = 0.3  # ループ時の遷移時間（秒）
         self.last_frame_data: dict[str, Any] = {}  # ループ時のブレンド用
         self.expression_data = self._load_expression_recordings()
+        self.static_avatar = static_avatar
 
         self.smoothed_weights: dict[str, float] = {}
+        self.smoothed_gaze_weights: dict[str, float] = {}
+        self.next_blink_time = self._schedule_next_blink(time.time())
+        self.blink_started_at: Optional[float] = None
         self.tts_server = DEFAULT_TTS_SERVER
         self.tts_output = DEFAULT_TTS_OUTPUT
         self.audio_device = DEFAULT_AUDIO_DEVICE
         self.tts_ref_id = DEFAULT_TTS_REF_ID
-        self.direct_tts_mode = False
         self.state_lock = threading.Lock()
         self.speech_queue: queue.Queue[Optional[list[SpeechSegment]]] = queue.Queue()
         self.control_inbox: queue.Queue[str] = queue.Queue()
+        self.llm_receiver: Optional[LLMOutputReceiver] = None
         
         self.is_speaking = False
         self.speech_motion = 0.0
@@ -964,8 +1226,6 @@ class AvatarApp(pyglet.window.Window):
         self.head_yaw = 0.0
         self.head_pitch = 0.0
         self.head_roll = 0.0
-        self.person_look_yaw = 0.0
-        self.person_look_strength = 0.0
         self.view_rotation_index = 0
 
         self.lipsync_active = False
@@ -976,26 +1236,24 @@ class AvatarApp(pyglet.window.Window):
         
         self.speech_thread = threading.Thread(target=self._speech_worker, daemon=True)
         self.speech_thread.start()
-        self.control_server = ExternalControlServer(self.control_inbox)
-        self.control_server.start()
-        self.llm_output_receiver: Optional[LLMOutputReceiver] = None
+
         if llm_output_server:
-            self.llm_output_receiver = LLMOutputReceiver(
+            self.llm_receiver = LLMOutputReceiver(
                 self.control_inbox,
                 llm_output_server,
-                interval_sec=llm_output_interval,
+                llm_output_interval,
             )
-            self.llm_output_receiver.start()
-        self.person_tracker = PersonTracker()
-        self.person_tracker.start()
+            self.llm_receiver.start()
 
-        if self._load_recording():
+        if not self.static_avatar and self._load_recording():
             self.mode = "PLAY"
             self.play_start_time = time.time()
             print(f"[MODE] PLAY auto-started from {ANIMATION_DATA_PATH.name}.")
         
+        self.control_window: Optional[ControlWindow] = None
         if launch_terminal:
-            launch_control_terminal()
+            self.control_window = ControlWindow(self.control_inbox.put, host=control_host, port=control_port)
+            self.control_window.start()
             
         glClearColor(0.0, 0.0, 0.0, 1.0)
         glEnable(GL_DEPTH_TEST)
@@ -1007,14 +1265,19 @@ class AvatarApp(pyglet.window.Window):
         print("T キー: トラッキング機能は無効")
         print("R キー: 録画機能は無効")
         print("P キー: 再生 (Play) モードの 開始/停止")
-        print("control terminal: 'tts on' で入力文をそのまま読み上げ、'tts off' で戻る")
-        print("control terminal: 'ref happy_normal' や 'ref happy_high' のように参照音声を切り替え")
-        print("YOLO: 人物検出が有効なら、発話中に相手の方向を向く")
+        print("F / F11 キー: フルスクリーン切り替え")
+        print(f"TTS provider: {DEFAULT_TTS_PROVIDER}")
+        print(f"TTS server: {self.tts_server}")
+        if self.llm_receiver is not None:
+            print(f"LLM output: {self.llm_receiver.server_url}/api/output")
+        print(f"control web: http://127.0.0.1:{control_port}/")
+        print("control web/API: 入力文またはJSONをTTSで読み上げ")
+        print("control API: 'ref happy_normal' や 'ref happy_high' のように参照音声を切り替え")
         print("----------------\n")
 
     def update(self, dt: float) -> None:
-        self.smoothed_weights = self._decay_weights(self.smoothed_weights)
         now = time.time()
+        target_weights: dict[str, float] = {}
 
         with self.state_lock:
             speaking_now = self.is_speaking
@@ -1082,11 +1345,13 @@ class AvatarApp(pyglet.window.Window):
                 for k, v in frame_data["weights"].items():
                     if speaking_now and self._is_base_speech_mouth_key(k):
                         continue
-                    self.smoothed_weights[k] = max(self.smoothed_weights.get(k, 0.0), v)
+                    if k in GAZE_KEYS:
+                        self._set_layer_weight(target_weights, k, self._filtered_gaze_value(k, v))
+                    else:
+                        self._set_layer_weight(target_weights, k, self._base_motion_weight(k, v, speaking_now))
 
                 if speaking_now:
-                    self._suppress_base_mouth_motion(self.speech_face_reset)
-                    self._soft_reset_speech_face(self.speech_face_reset)
+                    self._soft_release_layer(target_weights, self.speech_face_reset)
 
                 target_yaw = frame_data["pose"]["yaw"]
                 target_pitch = frame_data["pose"]["pitch"]
@@ -1105,6 +1370,7 @@ class AvatarApp(pyglet.window.Window):
                 speech_emotion,
                 expression_elapsed,
                 self.speech_emotion_blend,
+                target_weights,
             )
         if expression_pose is not None:
             pose_blend = float(np.clip(self.speech_emotion_blend, 0.0, 1.0))
@@ -1113,15 +1379,21 @@ class AvatarApp(pyglet.window.Window):
             target_roll += (float(expression_pose.get("roll", 0.0)) - target_roll) * pose_blend
 
         if speaking_now:
-            if not self._apply_lipsync_weights_from_timeline():
+            lipsync_weights = self._get_lipsync_weights_from_timeline()
+            if lipsync_weights:
+                for key, value in lipsync_weights.items():
+                    self._set_layer_weight(target_weights, key, value, replace=True)
+            else:
                 talk_wave = 0.30 + 0.55 * (0.5 + 0.5 * math.sin((now - self.app_start) * 12.0))
-                self.smoothed_weights["jawopen"] = max(self.smoothed_weights.get("jawopen", 0.0), talk_wave)
-                self.smoothed_weights["mouthopen"] = max(self.smoothed_weights.get("mouthopen", 0.0), talk_wave * 0.88)
+                self._set_layer_weight(target_weights, "jawopen", talk_wave, replace=True)
+                self._set_layer_weight(target_weights, "mouthopen", talk_wave * 0.88, replace=True)
 
-        person_pose = self._get_person_look_pose(speaking_now)
-        if person_pose is not None:
-            person_yaw, person_strength = person_pose
-            target_yaw += (person_yaw - target_yaw) * person_strength
+        if not self.static_avatar:
+            for key, value in self._blink_weights(now, speaking_now).items():
+                self._set_layer_weight(target_weights, key, value, replace=True)
+            self._suppress_eye_conflicts_for_blink(target_weights)
+
+        self.smoothed_weights = self._smooth_face_weights(self.smoothed_weights, target_weights, dt)
 
         # 姿勢をスムージングしながら適用
         head_gain = 0.2
@@ -1131,6 +1403,135 @@ class AvatarApp(pyglet.window.Window):
 
         self.avatar.model_matrix = self._make_head_neck_pose_matrix() @ self.avatar_base_model_matrix
         self._drain_external_commands()
+
+    @staticmethod
+    def _set_layer_weight(
+        weights: dict[str, float],
+        key: str,
+        value: float,
+        replace: bool = False,
+    ) -> None:
+        value = float(np.clip(value, 0.0, 1.0))
+        if value <= 0.001:
+            return
+        if replace:
+            weights[key] = value
+        else:
+            weights[key] = max(weights.get(key, 0.0), value)
+
+    @staticmethod
+    def _base_motion_weight(key: str, value: float, speaking_now: bool) -> float:
+        value = float(np.clip(value, 0.0, 1.0))
+        if key in GAZE_KEYS:
+            return value
+        if key in BLINK_KEYS:
+            return min(value, 0.25)
+        if key in MOUTH_KEYS:
+            return value * (0.18 if speaking_now else 0.55)
+        return value * (0.42 if speaking_now else 0.72)
+
+    @staticmethod
+    def _soft_release_layer(weights: dict[str, float], strength: float) -> None:
+        strength = float(np.clip(strength, 0.0, 1.0))
+        if strength <= 0.0:
+            return
+        keep_factor = 1.0 - 0.55 * strength
+        for key in list(weights.keys()):
+            if key in SPEECH_LIPSYNC_KEYS or key in BLINK_KEYS:
+                continue
+            if key in GAZE_KEYS:
+                weights[key] *= 1.0 - 0.20 * strength
+            else:
+                weights[key] *= keep_factor
+            if weights[key] < 0.005:
+                weights.pop(key, None)
+
+    @staticmethod
+    def _suppress_eye_conflicts_for_blink(weights: dict[str, float]) -> None:
+        blink = max(float(weights.get(key, 0.0)) for key in BLINK_KEYS)
+        if blink <= 0.05:
+            return
+
+        if blink >= 0.72:
+            for key in BLINK_KEYS:
+                weights[key] = max(float(weights.get(key, 0.0)), 1.0)
+
+        conflict_keep = max(0.0, 1.0 - blink * 1.25)
+        for key in EYE_CONFLICT_KEYS:
+            if key not in weights:
+                continue
+            weights[key] *= conflict_keep
+            if weights[key] < 0.005:
+                weights.pop(key, None)
+
+    def _filtered_gaze_value(self, key: str, value: float) -> float:
+        target = float(np.clip(value, 0.0, 1.0)) * GAZE_MAX_WEIGHT
+        current = float(self.smoothed_gaze_weights.get(key, 0.0))
+        gain = GAZE_SMOOTH_GAIN if target > current else GAZE_DECAY_GAIN
+        filtered = current + (target - current) * gain
+        if filtered < 0.005:
+            self.smoothed_gaze_weights.pop(key, None)
+            return 0.0
+        self.smoothed_gaze_weights[key] = filtered
+        return filtered
+
+    @staticmethod
+    def _smooth_face_weights(
+        current: dict[str, float],
+        target: dict[str, float],
+        dt: float,
+    ) -> dict[str, float]:
+        dt_scale = max(0.25, min(2.5, dt * 60.0))
+        next_weights: dict[str, float] = {}
+        for key in set(current).union(target):
+            cur = float(current.get(key, 0.0))
+            tgt = float(target.get(key, 0.0))
+            if key in BLINK_KEYS:
+                gain_up, gain_down = 0.90, 0.55
+            elif key in SPEECH_LIPSYNC_KEYS:
+                gain_up, gain_down = 0.42, 0.30
+            elif key in MOUTH_KEYS:
+                gain_up, gain_down = 0.22, 0.14
+            elif key in GAZE_KEYS:
+                gain_up, gain_down = 0.16, 0.12
+            else:
+                gain_up, gain_down = 0.18, 0.10
+            gain = gain_up if tgt > cur else gain_down
+            alpha = 1.0 - (1.0 - gain) ** dt_scale
+            value = cur + (tgt - cur) * alpha
+            if value > 0.008:
+                next_weights[key] = float(np.clip(value, 0.0, 1.0))
+        return next_weights
+
+    def _blink_weights(self, now: float, speaking_now: bool) -> dict[str, float]:
+        if self.blink_started_at is None and now >= self.next_blink_time:
+            self.blink_started_at = now
+
+        if self.blink_started_at is None:
+            return {}
+
+        elapsed = now - self.blink_started_at
+        close_sec = BLINK_CLOSE_SEC * (1.15 if speaking_now else 1.0)
+        hold_sec = BLINK_HOLD_SEC
+        open_sec = BLINK_OPEN_SEC * (1.10 if speaking_now else 1.0)
+        total = close_sec + hold_sec + open_sec
+        if elapsed >= total:
+            self.blink_started_at = None
+            self.next_blink_time = self._schedule_next_blink(now)
+            return {}
+
+        if elapsed <= close_sec:
+            amount = elapsed / max(close_sec, 1e-6)
+        elif elapsed <= close_sec + hold_sec:
+            amount = 1.0
+        else:
+            amount = 1.0 - ((elapsed - close_sec - hold_sec) / max(open_sec, 1e-6))
+        amount = float(np.clip(math.sin(amount * math.pi * 0.5), 0.0, 1.0))
+        return {"eyesclosed": amount, "eyeblinkleft": amount, "eyeblinkright": amount}
+
+    @staticmethod
+    def _schedule_next_blink(now: float) -> float:
+        return now + float(np.random.uniform(BLINK_INTERVAL_MIN_SEC, BLINK_INTERVAL_MAX_SEC))
 
     def _soft_reset_speech_face(self, strength: float) -> None:
         """話している間、ループ中断時の顔を自然な正面に戻す。"""
@@ -1146,28 +1547,6 @@ class AvatarApp(pyglet.window.Window):
             self.smoothed_weights[key] *= keep_factor
             if self.smoothed_weights[key] < 0.01:
                 self.smoothed_weights.pop(key, None)
-
-    def _get_person_look_pose(self, speaking_now: bool) -> Optional[tuple[float, float]]:
-        target = self.person_tracker.get_target() if hasattr(self, "person_tracker") else None
-        desired_strength = PERSON_LOOK_BLEND_WHEN_SPEAKING if speaking_now and target else 0.0
-        if target:
-            x = float(target.get("x", 0.5))
-            if x < 0.5 - PERSON_LOOK_CENTER_DEADZONE:
-                desired_yaw = PERSON_LOOK_SIDE_YAW_DEG
-            elif x > 0.5 + PERSON_LOOK_CENTER_DEADZONE:
-                desired_yaw = -PERSON_LOOK_SIDE_YAW_DEG
-            else:
-                desired_yaw = 0.0
-        else:
-            desired_yaw = 0.0
-
-        gain = 0.08 if desired_strength > self.person_look_strength else 0.05
-        self.person_look_yaw += (desired_yaw - self.person_look_yaw) * gain
-        self.person_look_strength += (desired_strength - self.person_look_strength) * gain
-
-        if self.person_look_strength < 0.01:
-            return None
-        return self.person_look_yaw, self.person_look_strength
 
     @staticmethod
     def _is_base_speech_mouth_key(key: str) -> bool:
@@ -1327,7 +1706,13 @@ class AvatarApp(pyglet.window.Window):
         ratio = (elapsed - t0) / max((t1 - t0), 1e-6)
         return self._blend_frame_data(f0, f1, ratio)
 
-    def _apply_emotion_expression(self, emotion: str, elapsed: float, blend: float) -> Optional[dict[str, float]]:
+    def _apply_emotion_expression(
+        self,
+        emotion: str,
+        elapsed: float,
+        blend: float,
+        target_weights: dict[str, float],
+    ) -> Optional[dict[str, float]]:
         data = self.expression_data.get(emotion)
         if not data:
             return None
@@ -1341,7 +1726,14 @@ class AvatarApp(pyglet.window.Window):
             if key in EXPRESSION_LIPSYNC_OVERRIDE_KEYS:
                 continue
             expression_value = float(value) * float(np.clip(blend, 0.0, 1.0))
-            self.smoothed_weights[key] = max(self.smoothed_weights.get(key, 0.0), expression_value)
+            if key in GAZE_KEYS:
+                self._set_layer_weight(
+                    target_weights,
+                    key,
+                    self._filtered_gaze_value(key, expression_value),
+                )
+            else:
+                self._set_layer_weight(target_weights, key, expression_value)
         pose = frame.get("pose")
         if not isinstance(pose, dict):
             return None
@@ -1354,7 +1746,7 @@ class AvatarApp(pyglet.window.Window):
     def _emotion_from_ref_id(self, ref_id: Optional[str]) -> Optional[str]:
         return self._motion_key_from_ref_id(ref_id)
 
-    def _apply_lipsync_weights_from_timeline(self) -> bool:
+    def _get_lipsync_weights_from_timeline(self) -> Optional[dict[str, float]]:
         with self.state_lock:
             active = self.lipsync_active
             start_time = self.lipsync_start_time
@@ -1362,7 +1754,7 @@ class AvatarApp(pyglet.window.Window):
             timeline = self.lipsync_timeline
 
         if not active or not timeline:
-            return False
+            return None
 
         elapsed = max(0.0, time.time() - start_time)
         while index + 1 < len(timeline) and timeline[index + 1][0] <= elapsed:
@@ -1370,16 +1762,16 @@ class AvatarApp(pyglet.window.Window):
         index = min(index, len(timeline) - 1)
         current = timeline[index][1]
 
-        for key, value in current.items():
-            self.smoothed_weights[key] = max(self.smoothed_weights.get(key, 0.0), float(value))
-
         with self.state_lock:
             self.lipsync_index = index
-        return True
+        return {key: float(value) for key, value in current.items()}
 
     def on_draw(self) -> None:
-        self.clear()
         glClearColor(0.0, 0.0, 0.0, 1.0)
+        self.clear()
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         projection = self._make_projection_matrix()
         view = self._make_view_matrix()
         self.avatar.draw(
@@ -1392,9 +1784,10 @@ class AvatarApp(pyglet.window.Window):
         if symbol == pyglet.window.key.ESCAPE:
             self.close()
             return
-        if symbol == pyglet.window.key.F11:
+        if symbol in {pyglet.window.key.F, pyglet.window.key.F11}:
             self.set_fullscreen(not self.fullscreen)
             self._save_window_state()
+            print(f"[WINDOW] fullscreen {'on' if self.fullscreen else 'off'}")
             return
         if symbol == pyglet.window.key.V:
             self.view_rotation_index = (self.view_rotation_index + 1) % 4
@@ -1454,16 +1847,12 @@ class AvatarApp(pyglet.window.Window):
 
     def on_close(self) -> None:
         self._save_window_state()
-        if self.llm_output_receiver is not None:
-            self.llm_output_receiver.stop()
-            if self.llm_output_receiver.is_alive():
-                self.llm_output_receiver.join(timeout=1.5)
-        self.control_server.stop()
-        if self.control_server.is_alive():
-            self.control_server.join(timeout=1.0)
-        self.person_tracker.stop()
-        if self.person_tracker.is_alive():
-            self.person_tracker.join(timeout=1.5)
+        if self.llm_receiver is not None:
+            self.llm_receiver.stop()
+            self.llm_receiver = None
+        if self.control_window is not None:
+            self.control_window.close_from_app()
+            self.control_window = None
         self.speech_queue.put(None)
         if self.speech_thread.is_alive():
             self.speech_thread.join(timeout=1.5)
@@ -1508,7 +1897,7 @@ class AvatarApp(pyglet.window.Window):
             except queue.Empty:
                 return
 
-            command, command_ref_id, command_segments, command_source = self._extract_command_payload(raw)
+            command, command_ref_id, command_segments = self._extract_command_payload(raw)
             if not command:
                 continue
             if command.lower() in {"quit", "exit"}:
@@ -1516,13 +1905,8 @@ class AvatarApp(pyglet.window.Window):
                 continue
 
             lower = command.lower()
-            if lower in {"tts on", "tts start", "tts enable", "tts"}:
-                self.direct_tts_mode = True
-                print("[MODE] TextToSpeech ON")
-                continue
-            if lower in {"tts off", "tts stop", "tts disable"}:
-                self.direct_tts_mode = False
-                print("[MODE] TextToSpeech OFF")
+            if lower in {"tts on", "tts start", "tts enable", "tts", "tts off", "tts stop", "tts disable"}:
+                print("[TTS] control mode is always on")
                 continue
             if lower.startswith("ref "):
                 ref_id = command.split(maxsplit=1)[1].strip()
@@ -1530,43 +1914,38 @@ class AvatarApp(pyglet.window.Window):
                 print(f"[TTS REF] {self.tts_ref_id or 'server default'}")
                 continue
 
-            label = "LLM OUTPUT" if command_source == "llm_output" else "You"
-            print(f"[{label}] {command}")
+            print(f"[You] {command}")
             ref_id = command_ref_id or self.tts_ref_id
             if command_segments:
                 segments = [
-                    SpeechSegment(segment.text, segment.ref_id or ref_id)
+                    SpeechSegment(segment.text, segment.ref_id or ref_id, segment.language)
                     for segment in command_segments
                     if segment.text.strip()
                 ]
-                print(f"[TTS] queued {len(segments)} segments")
+                languages = sorted({segment.language for segment in segments})
+                print(f"[TTS] queued {len(segments)} segment(s), language={','.join(languages)}")
                 self.speech_queue.put(segments)
-            elif self.direct_tts_mode:
-                print(f"[TTS] {command}")
-                self.speech_queue.put([SpeechSegment(command, ref_id)])
             else:
-                reply = self._generate_danya_reply(command)
-                print(f"[DANYA] {reply}")
-                self.speech_queue.put([SpeechSegment(reply, ref_id)])
+                print(f"[TTS] {command}")
+                self.speech_queue.put([SpeechSegment(command, ref_id, DEFAULT_TTS_LANGUAGE)])
 
     @classmethod
-    def _extract_command_payload(cls, raw: str) -> tuple[str, Optional[str], list[SpeechSegment], str]:
+    def _extract_command_payload(cls, raw: str) -> tuple[str, Optional[str], list[SpeechSegment]]:
         text = raw.strip()
         if not text:
-            return "", None, [], ""
+            return "", None, []
         if text.startswith("{"):
             try:
                 obj = json.loads(text)
             except json.JSONDecodeError:
-                return text, None, [], ""
+                return text, None, []
             ref_id = cls._normalize_ref_id(obj.get("ref_id") or obj.get("ref") or obj.get("emotion"))
             segments = cls._segments_from_payload(obj, ref_id)
             command_text = str(obj.get("text") or obj.get("message") or "").strip()
             if not command_text and segments:
                 command_text = " ".join(segment.text for segment in segments)
-            source = str(obj.get("source") or "").strip().lower()
-            return command_text, ref_id, segments, source
-        return text, None, [], ""
+            return command_text, ref_id, segments
+        return text, None, []
 
     @classmethod
     def _segments_from_payload(cls, obj: dict[str, Any], fallback_ref_id: Optional[str]) -> list[SpeechSegment]:
@@ -1585,13 +1964,15 @@ class AvatarApp(pyglet.window.Window):
                 fallback_ref_id,
                 obj.get("intensity") or obj.get("level"),
             )
-            return [SpeechSegment(text, ref_id)]
+            language = cls._normalize_language(obj.get("language") or obj.get("lang"))
+            return [SpeechSegment(text, ref_id, language)]
 
         segments: list[SpeechSegment] = []
         for item in raw_segments:
             if isinstance(item, str):
                 segment_text = item.strip()
                 ref_id = fallback_ref_id
+                language = cls._normalize_language(obj.get("language") or obj.get("lang"))
             elif isinstance(item, dict):
                 segment_text = str(item.get("text") or item.get("message") or "").strip()
                 ref_id = cls._normalize_ref_id(
@@ -1599,11 +1980,19 @@ class AvatarApp(pyglet.window.Window):
                     fallback_ref_id,
                     item.get("intensity") or item.get("level"),
                 )
+                language = cls._normalize_language(
+                    item.get("language") or item.get("lang") or obj.get("language") or obj.get("lang")
+                )
             else:
                 continue
             if segment_text:
-                segments.append(SpeechSegment(segment_text, ref_id))
+                segments.append(SpeechSegment(segment_text, ref_id, language))
         return segments
+
+    @staticmethod
+    def _normalize_language(value: Any) -> str:
+        language = str(value or DEFAULT_TTS_LANGUAGE).strip().lower()
+        return language or DEFAULT_TTS_LANGUAGE
 
     @staticmethod
     def _normalize_ref_id(
@@ -1658,8 +2047,6 @@ class AvatarApp(pyglet.window.Window):
                 weights = {
                     "jawopen": 0.0,
                     "mouthopen": 0.0,
-                    "mouthsmileleft": 0.0,
-                    "mouthsmileright": 0.0,
                     "mouthpucker": 0.0,
                 }
                 timeline.append((start / sr, weights))
@@ -1718,21 +2105,17 @@ class AvatarApp(pyglet.window.Window):
     @staticmethod
     def _vowel_probs_to_weights(probs: dict[str, float], energy: float) -> dict[str, float]:
         a = probs.get("a", 0.0)
-        i = probs.get("i", 0.0)
         u = probs.get("u", 0.0)
         e = probs.get("e", 0.0)
         o = probs.get("o", 0.0)
 
         jaw = energy * (0.18 + 0.78 * a + 0.32 * o + 0.28 * e)
         mouth_open = energy * (0.12 + 0.84 * a + 0.42 * o + 0.34 * e)
-        smile = energy * (0.60 * i + 0.38 * e)
         pucker = energy * (0.76 * u + 0.56 * o)
 
         return {
             "jawopen": float(np.clip(jaw, 0.0, 1.0)),
             "mouthopen": float(np.clip(mouth_open, 0.0, 1.0)),
-            "mouthsmileleft": float(np.clip(smile, 0.0, 1.0)),
-            "mouthsmileright": float(np.clip(smile, 0.0, 1.0)),
             "mouthpucker": float(np.clip(pucker, 0.0, 1.0)),
         }
 
@@ -1759,7 +2142,10 @@ class AvatarApp(pyglet.window.Window):
                         return None
                     segment = segments[next_index]
                     out_path = TTS_SEGMENT_DIR / f"tts_{batch_id}_{next_index:02d}.wav"
-                    print(f"[TTS] synth {next_index + 1}/{len(segments)}: {segment.text[:36]}")
+                    print(
+                        f"[TTS] synth {next_index + 1}/{len(segments)} "
+                        f"language={segment.language} server={self.tts_server}: {segment.text[:36]}"
+                    )
                     future = executor.submit(self._synthesize_speech_segment, segment, out_path)
                     next_index += 1
                     return future
@@ -1779,6 +2165,8 @@ class AvatarApp(pyglet.window.Window):
                             first_success_path = spoken_path
                         print(f"[TTS] play {current_index}/{len(segments)}")
                         self._play_speech_segment(spoken_segment, spoken_path)
+                        if TTS_SEGMENT_GAP_SEC > 0:
+                            time.sleep(TTS_SEGMENT_GAP_SEC)
 
             if failed_count:
                 print(f"[TTS WARN] skipped {failed_count}/{len(segments)} chunk(s) after all client fallbacks")
@@ -1794,7 +2182,7 @@ class AvatarApp(pyglet.window.Window):
         split_segments: list[SpeechSegment] = []
         for segment in segments:
             for text in cls._split_text_for_tts(segment.text, TTS_SEGMENT_MAX_CHARS):
-                split_segments.append(SpeechSegment(text, segment.ref_id))
+                split_segments.append(SpeechSegment(text, segment.ref_id, segment.language))
         split_segments = cls._merge_short_speech_segments(split_segments, TTS_SEGMENT_MAX_CHARS)
         if len(split_segments) > len(segments):
             print(
@@ -1818,12 +2206,13 @@ class AvatarApp(pyglet.window.Window):
             if (
                 merged
                 and merged[-1].ref_id == segment.ref_id
+                and merged[-1].language == segment.language
                 and len(merged[-1].text) + len(text) + 1 <= max_chars
                 and (len(merged[-1].text) < TTS_FALLBACK_MIN_CHARS or len(text) < TTS_FALLBACK_MIN_CHARS)
             ):
-                merged[-1] = SpeechSegment(f"{merged[-1].text} {text}", segment.ref_id)
+                merged[-1] = SpeechSegment(f"{merged[-1].text} {text}", segment.ref_id, segment.language)
             else:
-                merged.append(SpeechSegment(text, segment.ref_id))
+                merged.append(SpeechSegment(text, segment.ref_id, segment.language))
         return merged
 
     @staticmethod
@@ -1832,18 +2221,42 @@ class AvatarApp(pyglet.window.Window):
         if len(normalized) <= max_chars:
             return [normalized] if normalized else []
 
-        def split_long_part(part: str) -> list[str]:
-            pieces = [piece.strip() for piece in re.findall(r"[^、,]+[、,]?", part) if piece.strip()]
+        def split_long_sentence(sentence: str) -> list[str]:
+            pieces = [piece.strip() for piece in re.findall(r"[^、,，;；:：]+[、,，;；:：]?", sentence) if piece.strip()]
             if not pieces:
-                pieces = [part]
+                pieces = [sentence]
             result: list[str] = []
             current_piece = ""
+
+            def split_oversize_piece(value: str) -> list[str]:
+                words = value.split()
+                if len(words) > 1:
+                    word_chunks: list[str] = []
+                    current_words = ""
+                    for word in words:
+                        if len(word) > max_chars:
+                            if current_words:
+                                word_chunks.append(current_words)
+                                current_words = ""
+                            word_chunks.extend(word[start : start + max_chars] for start in range(0, len(word), max_chars))
+                            continue
+                        candidate = f"{current_words} {word}".strip()
+                        if current_words and len(candidate) > max_chars:
+                            word_chunks.append(current_words)
+                            current_words = word
+                        else:
+                            current_words = candidate
+                    if current_words:
+                        word_chunks.append(current_words)
+                    return word_chunks
+                return [value[start : start + max_chars] for start in range(0, len(value), max_chars)]
+
             for piece in pieces:
                 if len(piece) > max_chars:
                     if current_piece:
                         result.append(current_piece)
                         current_piece = ""
-                    result.extend(piece[start : start + max_chars] for start in range(0, len(piece), max_chars))
+                    result.extend(split_oversize_piece(piece))
                     continue
                 if current_piece and len(current_piece) + len(piece) > max_chars:
                     result.append(current_piece)
@@ -1853,7 +2266,11 @@ class AvatarApp(pyglet.window.Window):
                 result.append(current_piece)
             return result
 
-        sentence_parts = [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]?", normalized) if part.strip()]
+        sentence_parts = [
+            part.strip()
+            for part in re.findall(r"[^。．.!！？?؟]+[。．.!！？?؟]*", normalized)
+            if part.strip()
+        ]
         chunks: list[str] = []
         current = ""
 
@@ -1866,11 +2283,11 @@ class AvatarApp(pyglet.window.Window):
         for part in sentence_parts:
             if len(part) > max_chars:
                 flush_current()
-                chunks.extend(split_long_part(part))
+                chunks.extend(split_long_sentence(part))
                 continue
-            if current and len(current) + len(part) > max_chars:
+            if current and len(current) + len(part) + 1 > max_chars:
                 flush_current()
-            current += part
+            current = f"{current} {part}".strip() if current else part
         flush_current()
         return chunks
 
@@ -1892,7 +2309,8 @@ class AvatarApp(pyglet.window.Window):
         for index, chunk in enumerate(safe_chunks):
             if not chunk.strip():
                 continue
-            safe_segment = SpeechSegment(chunk, TTS_STABLE_REF_ID)
+            language = segments[0].language if segments else DEFAULT_TTS_LANGUAGE
+            safe_segment = SpeechSegment(chunk, TTS_STABLE_REF_ID, language)
             safe_path = TTS_SEGMENT_DIR / f"tts_{batch_id}_safe_{index:02d}.wav"
             ok, reason = self._try_synthesize_variants(safe_segment, safe_path)
             if not ok:
@@ -1914,7 +2332,7 @@ class AvatarApp(pyglet.window.Window):
         normalized_text = self._normalize_text_for_tts_retry(segment.text)
         if normalized_text and normalized_text != segment.text:
             normalized_path = out_path.with_name(f"{out_path.stem}_clean{out_path.suffix}")
-            normalized_segment = SpeechSegment(normalized_text, segment.ref_id)
+            normalized_segment = SpeechSegment(normalized_text, segment.ref_id, segment.language)
             ok_clean, reason_clean = self._try_synthesize_variants(normalized_segment, normalized_path)
             if ok_clean:
                 print(f"[TTS RECOVER] normalized text: {segment.text[:28]}")
@@ -1923,7 +2341,7 @@ class AvatarApp(pyglet.window.Window):
 
         if segment.ref_id:
             default_path = out_path.with_name(f"{out_path.stem}_default{out_path.suffix}")
-            default_segment = SpeechSegment(normalized_text or segment.text, None)
+            default_segment = SpeechSegment(normalized_text or segment.text, None, segment.language)
             ok_default, reason_default = self._try_synthesize_variants(default_segment, default_path)
             if ok_default:
                 print(f"[TTS RECOVER] default voice: {segment.text[:28]}")
@@ -1942,7 +2360,7 @@ class AvatarApp(pyglet.window.Window):
         failures: list[str] = []
         for index, chunk_text in enumerate(retry_chunks):
             chunk_path = out_path.with_name(f"{out_path.stem}_r{depth}_{index:02d}{out_path.suffix}")
-            chunk_segment = SpeechSegment(chunk_text, segment.ref_id)
+            chunk_segment = SpeechSegment(chunk_text, segment.ref_id, segment.language)
             ok_chunk, reason_chunk, chunk_parts = self._synthesize_speech_segment_with_fallback(
                 chunk_segment,
                 chunk_path,
@@ -1994,7 +2412,8 @@ class AvatarApp(pyglet.window.Window):
                 server_url=self.tts_server,
                 text=attempt_text,
                 out_path=attempt_path,
-                ref_id=ref_id,
+                ref_id=self._tts_api_ref_id(ref_id),
+                language=segment.language,
                 retry_max=retry_max,
             )
             if ok:
@@ -2006,6 +2425,12 @@ class AvatarApp(pyglet.window.Window):
                 return True, "OK"
             reasons.append(f"ref={ref_id or 'default'} {reason[:70]}")
         return False, "; ".join(reasons)
+
+    @staticmethod
+    def _tts_api_ref_id(ref_id: Optional[str]) -> Optional[str]:
+        if not TTS_SEND_REF_ID:
+            return None
+        return ref_id
 
     @staticmethod
     def _fallback_ref_ids(ref_id: Optional[str]) -> list[Optional[str]]:
@@ -2069,29 +2494,6 @@ class AvatarApp(pyglet.window.Window):
             self.lipsync_timeline = []
         if not ok_play:
             print(f"[AUDIO ERROR] {reason_play[:110]}")
-
-    @staticmethod
-    def _generate_danya_reply(user_text: str) -> str:
-        text = user_text.strip()
-        lower = text.lower()
-        if not text:
-            return "もう一度、聞かせてください。"
-        if "こんにちは" in text or "hello" in lower or "hi" in lower:
-            return "こんにちは。DANYAです。今日はどんなことを話しますか？"
-        if "名前" in text:
-            return "私はDANYAです。あなたと自然に会話できるよう練習中です。"
-        if "ありがとう" in text or "thanks" in lower:
-            return "どういたしまして。続けて話してみましょう。"
-        if "元気" in text:
-            return "元気です。あなたは今日どんな気分ですか？"
-        starts = ["なるほど", "いいですね", "わかりました", "面白いですね"]
-        follow = [
-            "もう少し詳しく教えてください。",
-            "そのとき、あなたはどう感じましたか？",
-            "次にやりたいことは何ですか？",
-            "一緒に整理してみましょう。",
-        ]
-        return f"{random.choice(starts)}。{random.choice(follow)}"
 
     def _make_head_neck_pose_matrix(self) -> np.ndarray:
         speak = float(self.speech_motion)
@@ -2226,71 +2628,44 @@ class AvatarApp(pyglet.window.Window):
         view[:3, 3] = -view[:3, :3] @ eye
         return view
 
-def send_to_control_server(text: str, host: str = CONTROL_HOST, port: int = CONTROL_PORT) -> bool:
-    try:
-        with socket.create_connection((host, port), timeout=2.0) as sock:
-            sock.sendall((text.strip() + "\n").encode("utf-8"))
-        return True
-    except OSError:
-        return False
-
-def run_control_terminal_loop(host: str = CONTROL_HOST, port: int = CONTROL_PORT) -> None:
-    print("DANYA control terminal")
-    print(f"target: {host}:{port}")
-    print("Type message and press Enter. 'tts on' to speak typed text as-is, 'tts off' to return, 'exit' to quit.")
-    while True:
-        try:
-            text = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\nbye")
-            return
-        if not text:
-            continue
-        if text.lower() in {"exit", "quit"}:
-            send_to_control_server("quit", host=host, port=port)
-            return
-        if not send_to_control_server(text, host=host, port=port):
-            print("Failed to send: avatar app is not running yet.")
-
-def launch_control_terminal() -> None:
-    script = shlex.quote(str(Path(__file__).resolve()))
-    python_exec = shlex.quote(sys.executable)
-    command = f"{python_exec} {script} --control"
-    shell_cmd = f"{command}; echo; echo '[Control terminal closed]'; exec bash"
-
-    candidates = [
-        ("x-terminal-emulator", ["x-terminal-emulator", "-e", "bash", "-lc", shell_cmd]),
-        ("gnome-terminal", ["gnome-terminal", "--", "bash", "-lc", shell_cmd]),
-        ("konsole", ["konsole", "-e", "bash", "-lc", shell_cmd]),
-        ("xfce4-terminal", ["xfce4-terminal", "--command", f"bash -lc \"{shell_cmd}\""]),
-        ("xterm", ["xterm", "-e", "bash", "-lc", shell_cmd]),
-    ]
-
-    for binary, argv in candidates:
-        if shutil.which(binary):
-            try:
-                subprocess.Popen(argv)
-                return
-            except Exception:
-                continue
-
-    print("Could not auto-launch terminal. Run this manually:")
-    print(f"bash -lc \"{shell_cmd}\"")
-
 def main() -> None:
-    global YOLO_TRACKING_ENABLED, YOLO_CAMERA_INDEX, YOLO_MODEL_PATH, YOLO_PREVIEW_ENABLED
-
     parser = argparse.ArgumentParser(description="DANYA avatar viewer and control endpoint")
-    parser.add_argument("--control", action="store_true", help="Run control terminal loop")
+    parser.add_argument(
+        "--no-control-window",
+        action="store_true",
+        help="Do not auto-open the TTS control window",
+    )
     parser.add_argument(
         "--no-control-terminal",
         action="store_true",
-        help="Do not auto-open control terminal window",
+        help=argparse.SUPPRESS,
     )
-    parser.add_argument("--no-yolo", action="store_true", help="Disable YOLO person tracking")
-    parser.add_argument("--no-yolo-preview", action="store_true", help="Disable YOLO preview window")
-    parser.add_argument("--yolo-camera", type=int, default=YOLO_CAMERA_INDEX, help="Camera index for YOLO tracking")
-    parser.add_argument("--yolo-model", default=YOLO_MODEL_PATH, help="Ultralytics YOLO model path/name")
+    parser.add_argument(
+        "--control-host",
+        default=DEFAULT_CONTROL_HOST,
+        help="Web control bind host. Use 0.0.0.0 for phones on the same LAN.",
+    )
+    parser.add_argument(
+        "--control-port",
+        type=int,
+        default=DEFAULT_CONTROL_PORT,
+        help="Web control port",
+    )
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help="Start the avatar window in fullscreen mode",
+    )
+    parser.add_argument(
+        "--windowed",
+        action="store_true",
+        help="Start the avatar window in windowed mode, ignoring the saved fullscreen state",
+    )
+    parser.add_argument(
+        "--static",
+        action="store_true",
+        help="Show a still avatar: disable recorded motion auto-play and idle blinking",
+    )
     parser.add_argument(
         "--llm-output-server",
         default=DEFAULT_LLM_OUTPUT_SERVER,
@@ -2304,19 +2679,17 @@ def main() -> None:
     )
     parser.add_argument("--no-llm-output", action="store_true", help="Disable LLM output polling")
     args = parser.parse_args()
-
-    if args.control:
-        run_control_terminal_loop()
-        return
-
-    YOLO_TRACKING_ENABLED = YOLO_TRACKING_ENABLED and not args.no_yolo
-    YOLO_PREVIEW_ENABLED = YOLO_PREVIEW_ENABLED and not args.no_yolo_preview
-    YOLO_CAMERA_INDEX = args.yolo_camera
-    YOLO_MODEL_PATH = args.yolo_model
-
+    if args.fullscreen and args.windowed:
+        parser.error("--fullscreen and --windowed cannot be used together")
+    start_fullscreen = True if args.fullscreen else False if args.windowed else None
     llm_output_server = None if args.no_llm_output else args.llm_output_server
+
     AvatarApp(
-        launch_terminal=not args.no_control_terminal,
+        launch_terminal=not (args.no_control_window or args.no_control_terminal),
+        control_host=args.control_host,
+        control_port=args.control_port,
+        start_fullscreen=start_fullscreen,
+        static_avatar=args.static,
         llm_output_server=llm_output_server,
         llm_output_interval=args.llm_output_interval,
     )
