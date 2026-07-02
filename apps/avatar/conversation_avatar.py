@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import base64
@@ -1187,6 +1187,7 @@ class AvatarApp(pyglet.window.Window):
 
         self.avatar = GLBAvatar(MODEL_PATH)
         self.avatar_base_model_matrix = self.avatar.model_matrix.copy()
+        self.mirror_display = False
         
         # モードと記録データの追加 ("IDLE", "TRACK", "RECORD", "PLAY")
         self.mode = "IDLE" 
@@ -1774,11 +1775,19 @@ class AvatarApp(pyglet.window.Window):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         projection = self._make_projection_matrix()
         view = self._make_view_matrix()
-        self.avatar.draw(
-            self.smoothed_weights,
-            view,
-            projection,
-        )
+        original_model_matrix = self.avatar.model_matrix
+        if self.mirror_display:
+            mirror = np.eye(4, dtype=np.float32)
+            mirror[0, 0] = -1.0
+            self.avatar.model_matrix = mirror @ original_model_matrix
+        try:
+            self.avatar.draw(
+                self.smoothed_weights,
+                view,
+                projection,
+            )
+        finally:
+            self.avatar.model_matrix = original_model_matrix
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         if symbol == pyglet.window.key.ESCAPE:
@@ -1794,7 +1803,9 @@ class AvatarApp(pyglet.window.Window):
             return
         
         if symbol == pyglet.window.key.T:
-            print("[MODE] TRACK is disabled.")
+            self.mirror_display = not self.mirror_display
+            print(f"[DISPLAY] mirror {'on' if self.mirror_display else 'off'}")
+            return
             
         if symbol == pyglet.window.key.R:
             print("[MODE] RECORD is disabled.")
@@ -2697,3 +2708,7 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+

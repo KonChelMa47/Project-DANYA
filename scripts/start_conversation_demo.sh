@@ -11,6 +11,9 @@ LLM_INTERVAL="${LLM_INTERVAL:-20}"
 LLM_IMMEDIATE="${LLM_IMMEDIATE:-0}"
 START_LLM_SERVER="${START_LLM_SERVER:-1}"
 AVATAR_EXTRA_ARGS="${AVATAR_EXTRA_ARGS:-}"
+AVATAR_FORCE_WINDOWED="${AVATAR_FORCE_WINDOWED:-1}"
+export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+export PYGLET_SHADOW_WINDOW="${PYGLET_SHADOW_WINDOW:-0}"
 LLM_STARTED=0
 AVATAR_CLI_ARGS=()
 
@@ -28,6 +31,12 @@ Environment:
   START_LLM_SERVER=0  Same as --without-llm
   LLM_IMMEDIATE=1     Emit one demo LLM output immediately
   AVATAR_EXTRA_ARGS   Extra args passed to apps/avatar/conversation_avatar.py
+  AVATAR_FORCE_WINDOWED=0
+                    Do not add --windowed automatically
+  LIBGL_ALWAYS_SOFTWARE=0
+                    Use the default WSLg OpenGL path instead of software rendering
+  PYGLET_SHADOW_WINDOW=1
+                    Enable pyglet's shadow window
 EOF
 }
 
@@ -68,6 +77,22 @@ while (($# > 0)); do
   esac
   shift
 done
+
+if is_truthy "$AVATAR_FORCE_WINDOWED"; then
+  has_window_mode=0
+  for arg in "${AVATAR_CLI_ARGS[@]}"; do
+    if [[ "$arg" == "--windowed" || "$arg" == "--fullscreen" ]]; then
+      has_window_mode=1
+      break
+    fi
+  done
+  if [[ "$AVATAR_EXTRA_ARGS" == *"--windowed"* || "$AVATAR_EXTRA_ARGS" == *"--fullscreen"* ]]; then
+    has_window_mode=1
+  fi
+  if [[ "$has_window_mode" == "0" ]]; then
+    AVATAR_CLI_ARGS=(--windowed "${AVATAR_CLI_ARGS[@]}")
+  fi
+fi
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "[DEMO] Python not found or not executable: $PYTHON_BIN" >&2
