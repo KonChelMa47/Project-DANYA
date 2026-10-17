@@ -1,0 +1,17 @@
+import numpy as np
+from pathlib import Path
+p=Path('outputs/danya-simulator/assets/projection-prototype/printable-seam/magnet-carrier-preclean.stl');dt=np.dtype([('n','<f4',(3,)),('v','<f4',(3,3)),('a','<u2')]);raw=np.fromfile(p,dtype=dt,offset=84)['v'];v,ix=np.unique(raw.reshape(-1,3),axis=0,return_inverse=True);f=ix.reshape(-1,3);e=np.sort(np.vstack([f[:,[0,1]],f[:,[1,2]],f[:,[2,0]]]),axis=1);u,c=np.unique(e,axis=0,return_counts=True);bad=u[c!=2];unseen=set(bad.flatten());groups=[]
+while unseen:
+ group={unseen.pop()};changed=True
+ while changed:
+  changed=False
+  for a,b in bad:
+   if a in group or b in group:
+    for i in (a,b):
+     if i in unseen:unseen.remove(i);group.add(i);changed=True
+ groups.append(sorted(group))
+for ids in groups:
+ assert np.max(np.linalg.norm(v[ids]-v[ids[0]],axis=1))<.001
+ for i in ids[1:]:f[f==i]=ids[0]
+p=p.with_name('magnet-carrier.stl')
+f=f[(f[:,0]!=f[:,1])&(f[:,1]!=f[:,2])&(f[:,2]!=f[:,0])];tri=v[f];d=np.zeros(len(f),dtype=dt);d['v']=tri;n=np.cross(tri[:,1]-tri[:,0],tri[:,2]-tri[:,0]);n/=np.maximum(np.linalg.norm(n,axis=1)[:,None],1e-30);d['n']=n;p.write_bytes(b'DANYA submicron boundary weld'.ljust(80,b' ')+np.uint32(len(d)).tobytes()+d.tobytes());e=np.sort(np.vstack([f[:,[0,1]],f[:,[1,2]],f[:,[2,0]]]),axis=1);u,c=np.unique(e,axis=0,return_counts=True);print('nonmanifold',sum(c!=2))

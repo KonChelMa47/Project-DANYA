@@ -1,0 +1,4 @@
+import fs from 'node:fs';import {obs,checkRod} from './revised-complete-route-check.mjs';
+const old=JSON.parse(fs.readFileSync('work/buildable-bust-v10/pitch-route-request-result.json'))[0];const ignore=[...old.ignore,'drop-pitch-support','drop-pitch-frame-bolt-0','drop-pitch-frame-bolt-1','pitch-bearing-cap-1','pitch-outboard-cap','pitch-outboard-bearing'];const rows=[];
+for(const [x,y,z]of[[-19,25,-48],[-18,24,-50],[-20,23,-50],[-17,23,-52]]){const points=[[-10,53,15],[-5,33,12],[-10,28,-2],[x,y,z],[-25,35,-62],[-37,23,-87],[-30.198520561,13.845745087,-102.379756201]];const checks=[];for(let i=1;i<points.length;i++)checks.push(checkRod(points[i-1],points[i],1,ignore,5.6));const row={points,checks};rows.push(row);console.log(JSON.stringify(row));if(checks.every(c=>!c.hits.length&&!c.lightHits))break;}
+fs.writeFileSync('work/buildable-bust-v10/pitch-core-detours.json',JSON.stringify({rows},null,2));

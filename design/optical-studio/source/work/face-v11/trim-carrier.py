@@ -1,0 +1,5 @@
+exec(open('work/face-v11/redesign.py').read().split("\nbpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)")[0])
+bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
+o=load(out/'magnet-carrier-revised.stl')
+for y in [-18.054,18.054]:cut(o,box((38.2,y,260),(20,17,20)))
+print(export(o,'magnet-carrier-revised'),flush=True)

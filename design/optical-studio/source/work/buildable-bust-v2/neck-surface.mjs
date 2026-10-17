@@ -1,0 +1,4 @@
+import fs from 'node:fs';import {point as oldPoint} from './surface.mjs';
+export const datum=JSON.parse(fs.readFileSync('outputs/danya-simulator/assets/buildable-bust-v2/neck-datum.json'));
+export function neckPoint(z,t,inner=false){const u=Math.max(0,Math.min(1,(z+20)/(datum.sectionZ+20))),w=u*u*(3-2*u),oldZ=-20+u*58,p=oldPoint(oldZ,t,inner);p[0]+=15;const n=datum.outline.length,fi=((t+Math.PI)/(2*Math.PI)*n%n+n)%n,i=Math.floor(fi),f=fi-i,a=datum.outline[i],b=datum.outline[(i+1)%n],q=a.map((v,k)=>v+(b[k]-v)*f),dx=q[0]-datum.center[0],dy=q[1]-datum.center[1],r=Math.hypot(dx,dy),inset=inner?3.5:.5;q[0]-=dx/r*inset;q[1]-=dy/r*inset;return[p[0]*(1-w)+q[0]*w,p[1]*(1-w)+q[1]*w,z];}
+export function bodyPoint(z,t,inner=false){if(z<=-20){const p=oldPoint(z,t,inner);p[0]+=15;return p;}return neckPoint(z,t,inner);}

@@ -1,0 +1,1 @@
+import fs from'node:fs';import{obs,check}from'./trial-route-check.mjs';const rows=[];for(const o of obs.filter(o=>['trial-rear-chassis','trial-floor','motor-yaw'].includes(o.name))){const r={name:o.name,...check(o.g,o.stage,[o.name],false)};rows.push(r);console.log(JSON.stringify(r));fs.writeFileSync('work/buildable-bust-v10/trial-rear-check.json',JSON.stringify(rows,null,2));}

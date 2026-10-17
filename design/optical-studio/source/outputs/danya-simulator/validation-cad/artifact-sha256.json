@@ -1,0 +1,12 @@
+{
+  "recommended-layout.json": "1552625892891be80f0b885b2dc4307dd4e0b1edb25398dfe02645633fefa798",
+  "src/optics.js": "7c638f7d9f73e0ac522c18cf9a2c07fdd681523735b268d4f7f5b7af6d923897",
+  "assets/cad-internal-v1/head.indices.bin": "039e83205570c0aa0fb1f9e640dd36d20a8a0f4ebc125c9c39dac006a061b9be",
+  "assets/cad-internal-v1/face.indices.bin": "9efcae023ffc7c84ec5dfa5caa95293acd42d331ee5d13f659c233ba146ed38e",
+  "assets/cad-internal-v1/face.positions.bin": "e608196865d660ac241eb64892dabe66851d6142a0d072f8c3d1d283c9b2bd27",
+  "assets/cad-internal-v1/face.normals.bin": "e4160557b704e5ba4c9a70c8bac765f4a403496ea8df11ca77cdbb03002aab09",
+  "assets/cad-internal-v1/head.normals.bin": "e5f2f2c771d9979f4c2fb59b05dd60fb2a9e2d3523798f5d946bbf4394793ebb",
+  "assets/cad-internal-v1/head.positions.bin": "57da838917f94c7cfe33cc0da03163467a2bf2f3e149166b5fbc3dc1ef648c32",
+  "assets/ti-engine-rd/engine.indices.bin": "4d97a73928578e8d4a3217558574fe67a330d7b33ec0aeaee6c40083e1089f1b",
+  "assets/ti-engine-rd/engine.positions.bin": "dba033c62c69936de5629e2ed3f46a875c2132461852e68952d36de94d08aff5"
+}

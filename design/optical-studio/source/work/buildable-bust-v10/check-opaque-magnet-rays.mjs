@@ -1,0 +1,10 @@
+import fs from'node:fs';import *as T from'../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{STLLoader}from'../../outputs/danya-simulator/node_modules/three/examples/jsm/loaders/STLLoader.js';import{MeshBVH}from'../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';import{obs}from'./route-check.mjs';import{projectionPath}from'../../outputs/danya-simulator/src/optics.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/torso-v3-layout.json')),face=obs.find(o=>o.name==='face'),head=obs.find(o=>o.name==='head'),ib=fs.readFileSync('outputs/danya-simulator/assets/torso-flat-study/face.outer.indices.bin'),ids=[...new Set(new Uint32Array(ib.buffer.slice(ib.byteOffset,ib.byteOffset+ib.byteLength)))],rows=[];
+for(let n=0;n<4;n++){const name='magnet-clear-'+n+'-face-magnet',b=fs.readFileSync('outputs/danya-simulator/assets/buildable-bust-v10/'+name+'.stl'),g=new STLLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));g.boundsTree=new MeshBVH(g);let hits=[],paths=0,baselineBlocked=0,newBlocked=0;
+ for(let i=0;i<ids.length;i+=1){const target=new T.Vector3().fromBufferAttribute(face.g.attributes.position,ids[i]),path=projectionPath(s,target);if(!path)continue;paths++;let base=false,blocked=null;
+  for(let j=1;j<path.legs.length;j++){const a=path.legs[j-1],delta=path.legs[j].clone().sub(a),len=delta.length(),ray=new T.Ray(a,delta.normalize()),h=head.g.boundsTree.raycastFirst(ray,T.DoubleSide);if(h&&h.distance<len-.02)base=true;const hit=g.boundsTree.raycastFirst(ray,T.DoubleSide);if(hit&&hit.distance<len-.02){const fh=face.g.boundsTree.raycastFirst(ray,T.DoubleSide);blocked={target:target.toArray(),point:hit.point.toArray(),leg:j,headAlreadyBlocks:base,faceFirstDistance:fh?.distance,partDistance:hit.distance};}}
+  if(base)baselineBlocked++;if(blocked){if(!base)newBlocked++;if(hits.length<15)hits.push(blocked);}
+ }
+ rows.push({name,outerTargets:ids.length,paths,baselineBlocked,newBlocked,hits});console.log(JSON.stringify(rows.at(-1)));
+}
+fs.writeFileSync('work/buildable-bust-v10/opaque-magnet-full-rays.json',JSON.stringify(rows,null,2));

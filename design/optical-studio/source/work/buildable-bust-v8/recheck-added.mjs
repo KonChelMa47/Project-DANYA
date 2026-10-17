@@ -1,0 +1,1 @@
+import{obs,check}from'./route-check.mjs';for(let o of obs.filter(o=>o.name.startsWith('projector-edge')||o.name==='frame-projector-left'))console.log(o.name,check(o.g,o.stage,obs.filter(p=>p.name!==o.name&&p.stage===o.stage&&p.name!=='projector'&&p.name!=='head'&&p.name!=='face').map(p=>p.name).concat(o.name)));

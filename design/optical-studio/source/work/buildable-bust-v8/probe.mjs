@@ -1,0 +1,1 @@
+import {pointTester,checkRod}from './route-check.mjs';import{profile}from './motion.mjs';let f=pointTester(3,['foldMirror-adjustment-plate'],3.1);for(let p of[[-39.3,9.65,-43.9],[-40,-3,-57],[-32,6,-57],[-35,9,-42],[-38,10,-39]])console.log(p,f(p));console.log('floor',profile(-152));

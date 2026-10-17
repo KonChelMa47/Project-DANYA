@@ -1,0 +1,3 @@
+import numpy as np,json
+from pathlib import Path
+r=Path('outputs/danya-simulator/assets/projection-prototype/unified-head-v5');d=np.load(r/'band-samples.npz');o=d['carrierOutside'];i=d['carrierInside'];v=o-np.array([0,0,160]);v[:,:,0]=0;v/=np.linalg.norm(v,axis=2)[:,:,None];t=np.sum((o-i)*v,axis=2);report={'parameterSamples':int(t.size),'carrierRadialWallMinMM':float(t.min()),'carrierRadialWallMedianMM':float(np.median(t)),'faceToCarrierAxialBondGapMM':.08,'carrierToRearHeadAxialGapMM':.26,'note':'Nominal parameter surfaces, not printed fit. Hidden adhesive gap; perimeter curve aligned. Wall radial direction differs from true normal.'};(r/'interface-design.json').write_text(json.dumps(report,indent=2));print(report)

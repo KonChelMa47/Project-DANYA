@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import {Vector3,Ray,DoubleSide,BufferGeometry,BufferAttribute,Matrix4,Box3} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+import {cadEngine,kit} from '../adult-kit/load-model.mjs';
+import {basis,projectionPath,visiblePath,rayForUV} from '../../outputs/danya-simulator/src/optics.js';
+import {createStrayTracer} from '../../outputs/danya-simulator/src/stray-light.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/layout.json'));
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const geo=(p,i)=>new BufferGeometry().setAttribute('position',new BufferAttribute(read(p,Float32Array),3)).setIndex(new BufferAttribute(read(i,Uint32Array),1));
+const fg=geo('work/adult-kit/original-face.positions.bin','work/adult-kit/original-face-outer.indices.bin'),f=new MeshBVH(fg),h=new MeshBVH(geo('work/adult-kit/original-head.positions.bin','work/adult-kit/head-outer-original.indices.bin'));
+const fullHead=new MeshBVH(geo('work/torso-flat/shell/bevel-0.6.positions.bin','work/torso-flat/shell/bevel-0.6.indices.bin')),fullFace=new MeshBVH(geo('work/torso-flat/face-local-v2.positions.bin','work/torso-flat/face-local-v2.indices.bin'));
+const {mirrorSolidGeometry}=await import('../../outputs/danya-simulator/src/mirror-geometry.js');const matrix=p=>{const b=basis(p);return new Matrix4().makeBasis(b.r,b.u,b.f).setPosition(b.p);},report=[];for(const {shift,layout:state}of JSON.parse(fs.readFileSync('work/torso-flat/recentered-layouts.json')).slice(0,1)){const part=state.mirror,g=mirrorSolidGeometry(part).scale(part.width,part.height,1).translate(0,0,-.85).applyMatrix4(matrix(part)),bvh=new MeshBVH(g),results={};for(const [name,other,m]of[['kit',kit,matrix(state.projector)],['tripo',cadEngine,matrix(state.projector)],['head',fullHead.geometry,new Matrix4()],['face',fullFace.geometry,new Matrix4()]]){other.boundsTree??=new MeshBVH(other);const a={},b={};const near=bvh.closestPointToGeometry(other,m,a,b,.3,.3);results[name]={surfaceIntersects:bvh.intersectsGeometry(other,m),atLeast0_3MM:!near||a.distance>=.3,nearestExaminedMM:a.distance};}report.push({shift,width:part.width,height:part.height,results});console.log(report.at(-1));}fs.writeFileSync('work/torso-flat/main-mirror-clearance.json',JSON.stringify(report,null,2));

@@ -1,0 +1,5 @@
+import fs from'node:fs';import *as T from'../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{STLLoader}from'../../outputs/danya-simulator/node_modules/three/examples/jsm/loaders/STLLoader.js';import{MeshBVH}from'../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';import{obs,check}from'./route-check.mjs';
+const root='outputs/danya-simulator/assets/buildable-bust-v10';function load(name){const b=fs.readFileSync(root+'/'+name+'.stl');return new STLLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));}
+const head=obs.find(o=>o.name==='head');head.g=load('head-inner-relief');head.g.boundsTree=new MeshBVH(head.g);const rows=[];
+for(let i=0;i<4;i++){const name='magnet-clear-'+i+'-face-return',g=load(name),r=check(g,3,[],true);rows.push({name,...r});console.log(name,JSON.stringify(r));}
+fs.writeFileSync(root+'/relieved-magnet-check.json',JSON.stringify({scope:'27poses sampled vs current partialmechanism; corrected head inner surface used. Own magnet pairs not yet added as obstacles.',rows},null,2));

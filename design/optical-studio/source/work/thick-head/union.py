@@ -1,0 +1,2 @@
+exec(open('work/thick-head/thicken.py').read().split("head=loadpath(src/")[0])
+head=loadpath(out/'jointless-clean.stl');band=loadpath(out/'outer-band.stl');bpy.context.view_layer.objects.active=head;m=head.modifiers.new('thick wall union','BOOLEAN');m.operation='UNION';m.solver='EXACT';m.object=band;bpy.ops.object.modifier_apply(modifier=m.name);bpy.data.objects.remove(band,do_unlink=True);print('FINAL UNION',export(head,'thick-head'),flush=True)

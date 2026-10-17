@@ -1,0 +1,5 @@
+exec(open('work/face-v11/redesign.py').read().split("\nbpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)")[0])
+bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
+h=load(out/'head-upper-release.stl')
+for y in [-18.054,18.054]:cut(h,box((47.5,y,249.4),(4,11,2.0)))
+print(export(h,'head-upper-release'),flush=True)

@@ -1,0 +1,22 @@
+{
+  "pocket": {
+    "head": false,
+    "face": false
+  },
+  "channel0": {
+    "head": false,
+    "face": false
+  },
+  "channel1": {
+    "head": false,
+    "face": false
+  },
+  "channel2": {
+    "head": false,
+    "face": false
+  },
+  "channel3": {
+    "head": false,
+    "face": false
+  }
+}

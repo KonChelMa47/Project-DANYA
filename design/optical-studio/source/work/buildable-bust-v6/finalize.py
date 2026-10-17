@@ -1,0 +1,16 @@
+# -*- coding: utf-8 -*-
+from pathlib import Path
+import csv,json,zipfile
+r=Path('outputs/danya-simulator/assets/buildable-bust-v6')
+rows=[['部品','数量','指定','状態'],['ホーンアダプター',1,'専用STEP・PETG試作','加工寸法と試験が必要'],['歯車',2,'96T/20T m1 歯幅10','専用STEP・PETG試作'],['上下保持板',2,'6061-T6 厚3','専用STEP・見積未取得'],['径方向スリーブ',1,'POM OD75.6 ID72 L10.8','加工品'],['固定金属スペーサー',6,'OD8 ID3.3 L11.3 ±0.05','加工品'],['PTFEスラスト材',2,'厚0.5 専用輪郭','打抜き/切削'],['ホーンねじ',4,'M3×8 皿','ホーンM3×0.5確認が先'],['クラッチ保持ボルト',1,'M3×30 六角頭 AF5.5 高さ2','標準品の寸法確認'],['固定板貫通ねじ',6,'M3×25 皿 下から挿入','下面突出不可'],['M3ナイロンロックナット',7,'厚4以下 AF5.5','厚さ確認'],['固定板上ワッシャ',6,'ID3.2～3.3 OD7 厚0.5','上面のみ'],['摩擦ワッシャ',2,'OD17 ID8.2 厚0.4','材質/品番をトルク試験で選ぶ'],['クラッチ下押さえワッシャ',1,'鋼 OD17 ID3.3 厚0.8','専用形状'],['クラッチ上ワッシャ',1,'鋼 OD10 ID3.3 厚0.8','標準/加工'],['圧縮ばね',1,'OD8 ID6 自由16 取付約8 k概算5.8N/mm','品番未確定・密着長と校正が必須'],['ばねガイド',1,'OD5.6 ID3.3 L6.5','専用STEP'],['上部キャリア出力部',2,'半径42の穴3.3','接続設計未完了・発注不可']]
+with (r/'HARDWARE.csv').open('w',encoding='utf-8-sig',newline='') as f:csv.writer(f).writerows(rows)
+p=r/'DETAIL_DESIGN.md';s=p.read_text();s+='\n## 保存した検査結果\n\n'
+for filename,description in [('packaging-check.json','20部品とプロジェクタ：27姿勢の表面交差なし。'),('motor-check.json','下げた左右サーボ：27姿勢のモーター包絡検査で交差なし。'),('mesh-check.json','181段階の歯面交差なし。'),('pair-check.json','選択した歯車/ハブと固定部の3左右角で交差なし。'),('fastener-check.json','購入ねじ等7組の円筒包絡とプロジェクタ：27姿勢で交差なし。'),('light-check.json','間引いた主光線と新部品：27姿勢で遮断なし。有限光束の検証ではない。')]:
+ s+=f'- [{filename}]({filename})：{description}\n'
+s+='\n[組立配置STEP](yaw-unit-assembly.step)（20部品。購入ねじ・ばねは別途部品表） · [購入/加工部品表](HARDWARE.csv)\n'
+p.write_text(s)
+p=Path('outputs/danya-simulator/buildable-bust-study.html');s=p.read_text().replace('<a href="assets/buildable-bust-v6/parts.json">STEP/STL部品一覧</a>','<a href="assets/buildable-bust-v6/yaw-unit-assembly.step">組立STEP</a> · <a href="assets/buildable-bust-v6/HARDWARE.csv">締結部品表</a>');p.write_text(s)
+p=Path('work/compact-loop/STATUS.md');p.open('a').write('''\n\n## 2026-09-22 v6 yaw coupling / retention detail\n- Official horn STEP: OD19.2, four Ø2.5 holes PCD14; thread not proven by STEP. M3×0.5 incoming inspection gate.\n- 20 valid single-solid STEP/STL parts, assembly STEP. 10mm gears, 9.5mm overlap, big bore76 / sleeve72. Horn flange+smooth journal, independent captive M3×30 bolt, calibrated0.08±0.01Nm clutch.\n- Lowered yaw servo tipZ−30.4. Upper/lower3mm aluminium capture plates, sixM3×25 countersunk screws inserted from below, spacers11.3. Base reshaped and thinned after projector collisions.\n- v6 geometric checks: 27pose part/projector and motor hull checks,181gear phases, selected selfpairs,hardware envelopes, sampledchief rays. See assets/buildable-bust-v6. Not physical proof or all-parts continuous containment.\n- Strength calculation is conditional, PETG8MPa and aluminium80MPa are assumed allowables; gear nominal margin1.14 only. Mass2kg/CG50mm/3x load envelope assumed, unmeasured.\n- NOT finished assembly: old yawposts conflict with retainingplate; removed from renderer, uppercarrier transition is not designed. Servo mountingframe, exactspring/friction SKUs, actual hornthread and proof test still unresolved. No orders or installs.\n''')
+with zipfile.ZipFile(r/'yaw-detail-v6.zip','w',zipfile.ZIP_DEFLATED) as z:
+ for p in sorted(r.iterdir()):
+  if p.suffix in ['.step','.stl','.md','.json','.csv']:z.write(p,p.name)

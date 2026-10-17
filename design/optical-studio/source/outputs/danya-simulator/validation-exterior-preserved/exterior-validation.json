@@ -1,0 +1,9 @@
+{
+  "headExteriorVertices": 111447,
+  "exactHeadExteriorVertices": 111447,
+  "maxHeadExteriorDistanceMM": 0,
+  "headExteriorFailures": [],
+  "externalViewRaySamples": 34452,
+  "maxExternalViewDifferenceMM": 2.2737367544323206e-13,
+  "externalViewFailures": []
+}

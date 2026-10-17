@@ -1,0 +1,3 @@
+import fs from'node:fs';import{obs,checkRod}from'./drop-route-check.mjs';
+const ignore=obs.filter(o=>/trial-pitch-support|trial-pitch-frame-bolt|selected-backmount-pitch|pitch-outboard|pitch-bearing-cap-1|yaw-upper-leg-1/.test(o.name)).map(o=>o.name),rows=[];
+for(const y of[31,35,39]){let pts=[[-10,53,7],[-5,33,4],[-10,28,-10],[-30,y,-95],[-30.19852,13.845745,-110.379756]].map(p=>[p[0],p[1],p[2]+8]),checks=[];for(let i=1;i<pts.length;i++)checks.push(checkRod(pts[i-1],pts[i],1,ignore,5.6));let row={y,points:pts,checks};rows.push(row);console.log(JSON.stringify(row));if(checks.every(c=>!c.hits.length&&!c.lightHits))break;}fs.writeFileSync('work/buildable-bust-v10/pitch-drop-probes.json',JSON.stringify(rows,null,2));

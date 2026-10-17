@@ -1,0 +1,8 @@
+import fs from'node:fs';import *as T from'../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{MeshBVH}from'../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+const root='outputs/danya-simulator/assets/buildable-bust-v10';function geometry(name){let a=fs.readFileSync(root+'/'+name+'.positions.bin'),b=fs.readFileSync(root+'/'+name+'.indices.bin');return new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(new Float32Array(a.buffer.slice(a.byteOffset,a.byteOffset+a.byteLength)),3)).setIndex(new T.BufferAttribute(new Uint32Array(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength)),1));}
+const head=geometry('head-inner-relief');head.boundsTree=new MeshBVH(head);const N=head.attributes.position.count/2,vertices=new Set(),rows=[];
+for(let i=0;i<4;i++){const g=geometry('magnet-clear-'+i+'-face-return');g.boundsTree=new MeshBVH(g);let triangles=0,outerTriangles=0;
+ head.boundsTree.bvhcast(g.boundsTree,new T.Matrix4(),{intersectsTriangles(a,b,ia){if(a.intersectsTriangle(b)){triangles++;const ids=[0,1,2].map(k=>head.index.array[ia*3+k]);if(ids.every(v=>v<N))outerTriangles++;ids.filter(v=>v>=N).forEach(v=>vertices.add(v-N));}return false;}});rows.push({part:i,triangles,outerTriangles});
+}
+const report={rows,innerVertexIDs:[...vertices]};fs.writeFileSync('work/buildable-bust-v10/head-contact-refinement.json',JSON.stringify(report,null,2));console.log(JSON.stringify({rows,innerVertices:vertices.size}));
+if(!rows.some(r=>r.outerTriangles)){let path='work/buildable-bust-v10/head-forced-relief.json',extra=fs.existsSync(path)?JSON.parse(fs.readFileSync(path)):{};for(const i of vertices)extra[i]=(extra[i]||0)+.15;fs.writeFileSync(path,JSON.stringify(extra));}

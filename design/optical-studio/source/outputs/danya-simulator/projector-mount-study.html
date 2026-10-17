@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DANYA｜底面を受けるプロジェクタ固定具</title>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+<style>*{box-sizing:border-box}body{margin:0;background:#101b22;color:#eef5f3;font:14px system-ui}main{display:grid;grid-template-columns:340px 1fr;height:100vh}aside{padding:24px;background:#152831;overflow:auto}h1{font-size:24px}h2{font-size:17px;margin-top:28px}p{line-height:1.7}small,a{color:#86d5c5}button{background:#35675f;color:white;border:0;border-radius:6px;padding:10px;cursor:pointer}label{display:block;margin:18px 0}input[type=range]{width:100%}.note{padding:12px;background:#443a2b;border-radius:8px;color:#ffe0b4}td{padding:8px 3px;border-bottom:1px solid #355059}#view{position:relative;min-width:0}canvas{display:block}#state{position:absolute;left:16px;bottom:16px;right:16px;background:#152831dd;padding:12px;border-radius:8px;pointer-events:none}@media(max-width:740px){main{display:block;height:auto}aside{max-height:45vh}#view{height:55vh}}</style>
+<main><aside><small>PROJECT DANYA / PROJECTOR MOUNT</small><h1>底面を受ける<br>着脱式トレー</h1><p>実測した長方形の底面をはめ込み、縁を4個の押さえで固定します。プロジェクタ本体の底面ネジ穴は使用しません。</p>
+<table><tr><td>底面の実測値</td><td>135 × 75 mm</td></tr><tr><td>受けの内寸</td><td>135.8 × 75.8 mm</td></tr><tr><td>片側の余裕</td><td>0.4 mm</td></tr><tr><td>トレー底の厚さ</td><td>5 mm</td></tr><tr><td>押さえ</td><td>4個／M3締結</td></tr></table>
+<label><input id="projector" type="checkbox" checked> 実機CADを表示</label><label><input id="transparent" type="checkbox"> 実機CADを半透明にする</label>
+<label>プロジェクタを取り出す <output id="lift-value">0 mm</output><input id="lift" type="range" min="0" max="100" value="0"></label>
+<p><button id="oblique">斜め</button> <button id="top">底面側</button> <button id="side">横から</button></p>
+<p>緑：印刷部品　灰：締結部品<br>濃灰：シリコーン当て材　黄：プロジェクタ実機CAD</p>
+<p class="note">試作候補です。底板の厚み3.97 mmはCAD由来の仮値です。実物でのはめ合い・抜け止め・放熱試験は未実施。支持フレームとの接続設計が残っています。</p>
+<h2>組み立て方</h2><p>底面を4点の支持面に載せ、シリコーン当て材を介して底板の縁を押さえます。基板・レンズに力を掛けない構造です。図の「取り出す」操作は、押さえを外してから持ち上げる手順を示します。</p>
+<p><a href="assets/buildable-bust-v9/PROJECTOR_MOUNT.md">寸法・組立と未検証事項</a></p><p><a href="buildable-bust-study.html">全体設計へ戻る</a></p>
+</aside><div id="view"><div id="state" role="status">モデルを読み込んでいます…</div></div></main>
+<script type="module" src="src/projector-mount-study.js"></script></html>

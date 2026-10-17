@@ -1,0 +1,2 @@
+exec(open('work/thick-head/thicken.py').read().split("head=loadpath(src/")[0])
+head=loadpath(out/'head-upper-clean.stl');tool=loadpath(out/'local-optical-tool.stl');bpy.context.view_layer.objects.active=head;m=head.modifiers.new('clear local face rays','BOOLEAN');m.operation='DIFFERENCE';m.solver='EXACT';m.object=tool;bpy.ops.object.modifier_apply(modifier=m.name);bpy.data.objects.remove(tool,do_unlink=True);print(export(head,'head-upper'),flush=True)

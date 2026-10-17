@@ -1,0 +1,15 @@
+import fs from 'node:fs';
+import {Vector3,BufferGeometry,BufferAttribute,Float32BufferAttribute,Matrix4} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {ConvexHull} from '../../outputs/danya-simulator/node_modules/three/examples/jsm/math/ConvexHull.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+import {basis} from '../../outputs/danya-simulator/src/optics.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/torso-v3-layout.json')),points=[];
+for(const p of[s.foldMirror,s.mirror]){const b=basis(p);for(const[x,y]of p.outline||[[-.5,-.5],[.5,-.5],[.5,.5],[-.5,.5]])points.push(b.p.clone().addScaledVector(b.r,x*p.width).addScaledVector(b.u,y*p.height));}
+function convex(points){const hull=new ConvexHull().setFromPoints(points),flat=[];for(const f of hull.faces){let e=f.edge;do{flat.push(...e.head().point.toArray());e=e.next;}while(e!==f.edge);}return{hull,bvh:new MeshBVH(new BufferGeometry().setAttribute('position',new Float32BufferAttribute(flat,3)))};}
+const b=basis(s.projector),mat=new Matrix4().makeBasis(b.r,b.u,b.f).setPosition(b.p),targets={optical:convex(points),body:convex(JSON.parse(fs.readFileSync('work/torso-flat/projector-hull.json')).vertices.map(p=>new Vector3(...p).applyMatrix4(mat)))};
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+for(const[name,p]of[['head','work/torso-flat/shell/bevel-0.6'],['face','work/torso-flat/face-local-v2']]){const g=new BufferGeometry().setAttribute('position',new BufferAttribute(read(p+'.positions.bin',Float32Array),3)).setIndex(new BufferAttribute(read(p+'.indices.bin',Uint32Array),1));targets[name]={bvh:new MeshBVH(g)};}
+const reports=[];for(const front of[25]){const poly=[[5,-70,0],[front,-70,0],[front,70,0],[5,70,0]].map(p=>new Vector3(...p)),samples=[];for(let i=1;i<poly.length;i++){const n=Math.ceil(poly[i].distanceTo(poly[i-1]));for(let k=0;k<=n;k++)samples.push(poly[i-1].clone().lerp(poly[i],k/n));}const rows={};for(const name of Object.keys(targets))rows[name]={minimumMM:Infinity};
+for(let roll=-15;roll<=15;roll+=.5){const a=-roll*Math.PI/180;for(const q of samples){const p=new Vector3(q.x,q.y*Math.cos(a),q.y*Math.sin(a));for(const[name,t]of Object.entries(targets)){const hit={};t.bvh.closestPointToPoint(p,hit);const d=t.hull?.containsPoint(p)?0:hit.distance;if(d<rows[name].minimumMM)rows[name]={minimumMM:d,witness:{roll,point:q.toArray()}};}}}
+const guard=.5001+70*Math.PI/720;for(const row of Object.values(rows))row.tubeClearanceLowerBoundMM=row.minimumMM-guard-4;reports.push({frontX:front,polyline:poly.map(p=>p.toArray()),tubeRadiusMM:4,guardMM:guard,rows});console.log(reports.at(-1));}
+fs.writeFileSync('work/torso-flat/yoke-inboard-screen.json',JSON.stringify({scope:'U-shaped pitch carrier, radius4mm tubes. Optical assembly rolls inside carrier; common yaw and pitch cancel in relative geometry. Distances to head/face surfaces do not alone establish outside-material classification. Fixed housing, bearings, brackets, loads and fasteners excluded.',reports},null,2));

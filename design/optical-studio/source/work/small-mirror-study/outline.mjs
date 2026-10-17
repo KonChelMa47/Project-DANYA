@@ -1,0 +1,7 @@
+import fs from'node:fs';import{outgoing,pupilSamples}from'../../outputs/danya-simulator/src/small-mirror-optics.js';
+const s=JSON.parse(fs.readFileSync('outputs/danya-simulator/assets/projection-prototype/layout.json'));let points=[];
+for(const axial of[-5,0,5])for(const focus of[200,350,450])for(const[x,y]of[[0,0],...Array.from({length:128},(_,i)=>[Math.cos(i*Math.PI/64),Math.sin(i*Math.PI/64)])])for(const[u,v]of[[0,0],[1,0],[1,1],[0,1]]){let a=outgoing(s,u,v,{pupilDiameter:8,pupilAxial:axial,focus,pupilX:x,pupilY:y});if(a)points.push([a.x,a.y]);}
+// Intersect outward support halfplanes. Straight edges, 1mm guard, 12 directions.
+let planes=Array.from({length:12},(_,i)=>{let a=i*Math.PI/6,n=[Math.cos(a),Math.sin(a)];return{n,c:Math.max(...points.map(p=>p[0]*n[0]+p[1]*n[1]))+1}}),poly=[[-1000,-1000],[1000,-1000],[1000,1000],[-1000,1000]];
+for(const{n,c}of planes){let p=[];for(let i=0;i<poly.length;i++){let a=poly[i],b=poly[(i+1)%poly.length],da=a[0]*n[0]+a[1]*n[1]-c,db=b[0]*n[0]+b[1]*n[1]-c;if(da<=0)p.push(a);if((da<0)!==(db<0)){let t=da/(da-db);p.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}}poly=p;}
+fs.writeFileSync('outputs/danya-simulator/assets/small-mirror-study/outline-candidate.json',JSON.stringify({scope:'Candidate only, not adopted. Full image corners, hypothetical diameter8mm pupil boundary, axial -5/0/+5mm, F200/350/450mm, 1mm added support-plane guard. 12 straight-edge outer support polygon.',pointsMM:poly},null,2));console.log(poly);

@@ -1,0 +1,9 @@
+import fs from 'node:fs';
+import {BufferGeometry,BufferAttribute,CylinderGeometry,Matrix4,Vector3,Quaternion,Euler} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const dir='work/torso-flat/v4-yoke-housing/',g=new BufferGeometry().setAttribute('position',new BufferAttribute(read(dir+'torso.positions.bin',Float32Array),3)).setIndex(new BufferAttribute(read(dir+'torso.indices.bin',Uint32Array),1)),bvh=new MeshBVH(g),poly=[[0,-85,0],[20,-85,0],[20,85,0],[0,85,0]].map(p=>new Vector3(...p)),parts=[];
+for(let i=1;i<poly.length;i++){const a=poly[i-1],b=poly[i],length=a.distanceTo(b),g=new CylinderGeometry(4,4,length,64);g.applyQuaternion(new Quaternion().setFromUnitVectors(new Vector3(0,1,0),b.clone().sub(a).normalize()));g.translate(...a.clone().add(b).multiplyScalar(.5).toArray());parts.push(g);}
+parts.push(new CylinderGeometry(4,4,170,64));let poses=0;const hits=[];
+for(let yaw=-45;yaw<=45;yaw+=2.5)for(let pitch=-20;pitch<=20;pitch+=2.5){poses++;const q=new Quaternion().setFromEuler(new Euler(0,pitch*Math.PI/180,yaw*Math.PI/180,'ZYX')),m=new Matrix4().compose(new Vector3(5,0,0),q,new Vector3(1,1,1));for(let i=0;i<parts.length;i++)if(bvh.intersectsGeometry(parts[i],m))hits.push({yaw,pitch,part:i});}
+const report={scope:'Independent triangle check of radius4 pitch carrier and pitch shaft versus expanded housing. Common yaw/pitch, inner optical roll not applied to carrier. Complements continuous opening bounds. No bearing/fastener/actuator/frame-load validation.',poses,partChecks:poses*parts.length,hits};fs.writeFileSync('work/torso-flat/yoke-housing-audit.json',JSON.stringify(report,null,2));console.log(report);

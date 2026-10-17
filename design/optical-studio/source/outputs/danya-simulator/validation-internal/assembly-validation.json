@@ -1,0 +1,87 @@
+{
+  "parts": {
+    "engine": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 2.1152368841266003,
+      "vertexMinShellClearance": 0.9999891308853529,
+      "bounds": [
+        [
+          -38.1672477722168,
+          -28.506118774414062,
+          152.4569854736328
+        ],
+        [
+          19.300365447998047,
+          28.484668731689453,
+          232.87850952148438
+        ]
+      ]
+    },
+    "mirror": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 24.527889009856334,
+      "vertexMinShellClearance": 19.533566928474542,
+      "bounds": [
+        [
+          -53.39226150512695,
+          -19.90265655517578,
+          116.96832275390625
+        ],
+        [
+          -32.516780853271484,
+          19.74706268310547,
+          136.9536895751953
+        ]
+      ]
+    },
+    "fold": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 9.919723819472857,
+      "vertexMinShellClearance": 4.91587883530001,
+      "bounds": [
+        [
+          -54.510833740234375,
+          -12.489893913269043,
+          66.87549591064453
+        ],
+        [
+          -37.586368560791016,
+          12.489893913269043,
+          71.45328521728516
+        ]
+      ]
+    }
+  },
+  "pairs": {
+    "engine-mirror": false,
+    "engine-fold": false,
+    "mirror-fold": false
+  },
+  "externalEnvelope": {
+    "min": [
+      -91.88861846923828,
+      -72.27752685546875,
+      38.27775573730469
+    ],
+    "max": [
+      89.94198608398438,
+      72.326904296875,
+      242.48843383789062
+    ],
+    "sizeXYZ": [
+      181.83060455322266,
+      144.60443115234375,
+      204.21067810058594
+    ]
+  },
+  "thickMirrorRayFailures": 0
+}

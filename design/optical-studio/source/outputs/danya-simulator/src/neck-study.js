@@ -1,0 +1,51 @@
+import * as T from 'three';
+import {STLLoader} from 'three/addons/loaders/STLLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {quaternion,projectionPath} from './optics.js';
+import {attachLiveProjection} from './neck-live-projection.js';
+import {mirrorSurfaceGeometry} from './mirror-geometry.js';
+const renderer=new T.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));document.body.append(renderer.domElement);
+const scene=new T.Scene();scene.background=new T.Color('#101b22');scene.add(new T.HemisphereLight(0xffffff,0x667788,2));const light=new T.DirectionalLight(0xffffff,3);light.position.set(400,-300,500);scene.add(light);
+const camera=new T.PerspectiveCamera(42,1,1,4000);camera.up.set(0,0,1);camera.position.set(650,-760,440);const orbit=new OrbitControls(camera,renderer.domElement);orbit.target.set(-20,0,45);
+const pivot=new T.Group();pivot.position.set(-15,0,42);scene.add(pivot);const rig=new T.Group();rig.position.copy(pivot.position).negate();pivot.add(rig);
+const base='assets/torso-flat-study/';
+async function geometry(prefix){const buffers=await Promise.all(['positions','indices'].map(async k=>{const r=await fetch(prefix+'.'+k+'.bin');if(!r.ok)throw Error(prefix);return r.arrayBuffer()}));const g=new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(new Float32Array(buffers[0]),3)).setIndex(new T.BufferAttribute(new Uint32Array(buffers[1]),1));g.computeVertexNormals();return g;}
+const [s,envelope,audit,head,face,body,torso,caseSpec,outerLines,forkSpec,padLeft,padRight,cradleSpec]=await Promise.all([fetch(base+'layout.json').then(r=>r.json()),fetch(base+'neck-envelope.json').then(r=>r.json()),fetch(base+'audit.json').then(r=>r.json()),geometry(base+'head'),geometry(base+'face'),geometry('assets/tripo-projector/projector'),geometry(base+'torso'),fetch(base+'torso-manifest.json').then(r=>r.json()),fetch(base+'mechanism-outer.json').then(r=>r.json()),fetch(base+'neck-fork.json').then(r=>r.json()),geometry(base+'neck-pad-0'),geometry(base+'neck-pad-1'),fetch(base+'projector-cradle.json').then(r=>r.json())]);
+pivot.position.fromArray(envelope.pivot);rig.position.copy(pivot.position).negate();
+const torsoMaterial=new T.MeshStandardMaterial({color:0x42545c,roughness:.75,flatShading:true,transparent:true,opacity:.12,depthWrite:false,side:T.DoubleSide}),torsoMesh=new T.Mesh(torso,torsoMaterial);scene.add(torsoMesh);
+const hm=new T.Mesh(head,new T.MeshStandardMaterial({color:0x8eafb5,transparent:true,opacity:.19,depthWrite:false,side:T.DoubleSide}));rig.add(hm);const faceMesh=new T.Mesh(face,new T.MeshStandardMaterial({color:0xe3d7c3,side:T.DoubleSide}));rig.add(faceMesh);
+attachLiveProjection(faceMesh,s,base,document.getElementById('projected-frame'),document.getElementById('source-status')).catch(error=>document.getElementById('source-status').textContent=error.message);
+const pm=new T.Mesh(body,new T.MeshStandardMaterial({color:0xaf5550,roughness:.6}));pm.position.fromArray(s.projector.position);pm.quaternion.copy(quaternion(s.projector.rotation));rig.add(pm);
+for(const part of [s.mirror,s.foldMirror]){const m=new T.Mesh(mirrorSurfaceGeometry(part),new T.MeshStandardMaterial({color:0xe6c78b,metalness:.5,roughness:.3,side:T.DoubleSide}));m.position.fromArray(part.position);m.quaternion.copy(quaternion(part.rotation));m.scale.set(part.width,part.height,1);rig.add(m);}
+const pathPoints=[];for(let i=0;i<face.index.count;i+=15000){const point=new T.Vector3().fromBufferAttribute(face.attributes.position,face.index.array[i]);const path=projectionPath(s,point);if(path)for(let j=1;j<path.legs.length;j++)pathPoints.push(path.legs[j-1],path.legs[j]);}
+if(pathPoints.length)rig.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(pathPoints),new T.LineBasicMaterial({color:0xefb752,transparent:true,opacity:.35})));
+const box=new T.Box3(new T.Vector3(...caseSpec.outsideMM.min),new T.Vector3(...caseSpec.outsideMM.max));scene.add(new T.Box3Helper(box,0x62cddd));
+if(envelope.comparisonBaseline){const b=envelope.comparisonBaseline,oldBox=new T.Box3Helper(new T.Box3(new T.Vector3(...b.min).addScalar(-10),new T.Vector3(...b.max).addScalar(10)),0x81776a);oldBox.visible=false;scene.add(oldBox);document.getElementById('compare').onchange=e=>oldBox.visible=e.target.checked;document.getElementById('compact-comparison').textContent=`本体＋小鏡の参考収納空間：${envelope.liters.toFixed(1)} L（元の配置比 ${envelope.volumeReductionPercent.toFixed(0)}%減）。首の支点は頭部の下約${(envelope.neckDistanceBelowShellBaseMM ?? 32.1).toFixed(0)} mm。左右±45°・上下±20°・傾き±15°を維持。`;}
+const ball=new T.Mesh(new T.SphereGeometry(7),new T.MeshStandardMaterial({color:0x64d4d2}));scene.add(ball);ball.position.copy(pivot.position);const axes=new T.AxesHelper(55);pivot.add(axes);
+const grid=new T.GridHelper(800,20,0x567079,0x263941);grid.rotation.x=Math.PI/2;grid.position.z=box.min.z;scene.add(grid);
+const carrier=new T.Group();carrier.position.copy(pivot.position);carrier.visible=false;scene.add(carrier);
+const carrierMaterial=new T.MeshStandardMaterial({color:0x48c9aa,roughness:.5});
+function carrierTube(a,b){const start=new T.Vector3(...a),end=new T.Vector3(...b),m=new T.Mesh(new T.CylinderGeometry(4,4,start.distanceTo(end),32),carrierMaterial);m.position.copy(start).add(end).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),end.sub(start).normalize());carrier.add(m);}
+carrierTube([0,-70,0],[20,-70,0]);carrierTube([20,-70,0],[20,-14,0]);carrierTube([20,14,0],[20,70,0]);carrierTube([20,70,0],[0,70,0]);carrierTube([0,-95,0],[0,95,0]);
+const sleeveMaterial=new T.MeshStandardMaterial({color:0xb8bfcd,transparent:true,opacity:.45,depthWrite:false});
+for(const y of[-85,85]){const sleeve=new T.Mesh(new T.CylinderGeometry(14,14,20,32),sleeveMaterial);sleeve.position.set(0,y,0);carrier.add(sleeve);}
+const rollSleeve=new T.Mesh(new T.CylinderGeometry(14,14,26,32),sleeveMaterial);rollSleeve.rotation.z=-Math.PI/2;rollSleeve.position.set(20,0,0);carrier.add(rollSleeve);
+const outerCarrier=new T.Group();outerCarrier.position.copy(pivot.position);outerCarrier.visible=false;scene.add(outerCarrier);
+for(const line of outerLines){const a=new T.Vector3(...line[0]).sub(pivot.position),b=new T.Vector3(...line[1]).sub(pivot.position),m=new T.Mesh(new T.CylinderGeometry(4,4,a.distanceTo(b),32),carrierMaterial);m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),b.sub(a).normalize());outerCarrier.add(m);}
+const headFork=new T.Group();headFork.visible=false;rig.add(headFork);
+for(const [i,line]of forkSpec.lines.entries()){const a=new T.Vector3(...line[0]),b=new T.Vector3(...line[1]),m=new T.Mesh(new T.CylinderGeometry(i===0?4:3,i===0?4:3,a.distanceTo(b),32),carrierMaterial);m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),b.sub(a).normalize());headFork.add(m);}
+const padMaterial=new T.MeshStandardMaterial({color:0xe3b868,roughness:.85});headFork.add(new T.Mesh(padLeft,padMaterial),new T.Mesh(padRight,padMaterial));
+const projectorCradle=new T.Group();projectorCradle.visible=false;rig.add(projectorCradle);
+const cradleMaterial=new T.MeshStandardMaterial({color:0xd497eb,roughness:.65});
+const cradleGeometry=await new STLLoader().loadAsync(base+cradleSpec.cadMesh);
+cradleGeometry.translate(...cradleSpec.cadDatum.map(v=>-v));
+const cradleMesh=new T.Mesh(cradleGeometry,cradleMaterial);cradleMesh.position.fromArray(s.projector.position);cradleMesh.quaternion.copy(quaternion(s.projector.rotation));projectorCradle.add(cradleMesh);
+
+const foldSupportSpec=await fetch(base+'fold-mirror-support.json').then(r=>r.json());
+for(const part of foldSupportSpec.lines)for(let i=1;i<part.points.length;i++){const a=new T.Vector3(...part.points[i-1]),b=new T.Vector3(...part.points[i]),m=new T.Mesh(new T.CylinderGeometry(part.radiusMM,part.radiusMM,a.distanceTo(b),32),cradleMaterial);m.position.copy(a).add(b).multiplyScalar(.5);m.quaternion.setFromUnitVectors(new T.Vector3(0,1,0),b.sub(a).normalize());projectorCradle.add(m);}
+const foldBack=new T.Mesh(new T.BoxGeometry(s.foldMirror.width,s.foldMirror.height,foldSupportSpec.mirrorThicknessMM),new T.MeshStandardMaterial({color:0x787d87,roughness:.8,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));foldBack.quaternion.copy(quaternion(s.foldMirror.rotation));foldBack.position.fromArray(s.foldMirror.position).add(new T.Vector3(0,0,-foldSupportSpec.mirrorThicknessMM/2).applyQuaternion(foldBack.quaternion));projectorCradle.add(foldBack);
+const yawCase=new T.Mesh(new T.CylinderGeometry(14,14,22,32),sleeveMaterial);yawCase.rotation.x=Math.PI/2;yawCase.position.set(5,0,-157);yawCase.visible=false;scene.add(yawCase);
+document.getElementById('mechanism').onchange=e=>{carrier.visible=e.target.checked;outerCarrier.visible=e.target.checked;yawCase.visible=e.target.checked;headFork.visible=e.target.checked;projectorCradle.visible=e.target.checked;};
+const ids=['yaw','pitch','roll'];function pose(){const [y,p,r]=ids.map(id=>{const v=Number(document.getElementById(id).value);document.getElementById(id+'-value').value=v+'°';return v*Math.PI/180});pivot.rotation.set(r,p,y,'ZYX');carrier.rotation.set(0,p,y,'ZYX');outerCarrier.rotation.set(0,0,y,'ZYX');}ids.forEach(id=>document.getElementById(id).oninput=pose);document.getElementById('reset').onclick=()=>{ids.forEach(id=>document.getElementById(id).value=0);pose()};document.getElementById('interior').onchange=e=>{hm.material.opacity=e.target.checked?.19:1;hm.material.depthWrite=!e.target.checked;torsoMaterial.opacity=e.target.checked?.12:1;torsoMaterial.depthWrite=!e.target.checked;};
+const size=box.getSize(new T.Vector3());document.getElementById('status').textContent=`支持柱・底部ケースを含む外装試作：幅 ${size.y.toFixed(0)} × 奥行 ${size.x.toFixed(0)} × 高さ ${size.z.toFixed(0)} mm。予定光路 ${audit.counts.fullShellOfficial.toLocaleString()} / ${audit.counts.total.toLocaleString()} 点が通過（${(100*audit.counts.fullShellOfficial/audit.counts.total).toFixed(2)}%）。`;
+function resize(){renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix()}addEventListener('resize',resize);resize();renderer.setAnimationLoop(()=>{orbit.update();renderer.render(scene,camera)});

@@ -1,0 +1,1 @@
+import *as T from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{around,rotation}from'./motion.mjs';console.log(new T.Vector3(-22.673496349242253,78.03743216654134,175.1482690997606).applyMatrix4(around(rotation(-30,0,-6)).invert()).toArray());

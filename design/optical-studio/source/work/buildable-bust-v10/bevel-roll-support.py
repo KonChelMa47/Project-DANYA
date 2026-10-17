@@ -1,0 +1,4 @@
+exec(open('work/buildable-bust-v9/build-motor-candidates.py').read().split('for d,parent')[0])
+from OCP.STEPControl import STEPControl_Reader
+out=Path('outputs/danya-simulator/assets/buildable-bust-v10');parts=[];r=STEPControl_Reader();assert r.ReadFile(str(out/'revised-roll-outer.step'))==1;r.TransferRoots();a=r.OneShape();d=json.load(open(out/'revised-drive-layout.json'))['motors'][2];m=qm(d['quaternion'],d['tip'])
+tool=poly([(11.9,10.1),(16.1,10.1),(11.9,5.9)],0,8);t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(0,0,0),gp_Dir(1,0,0)),math.pi/2);tool=BRepBuilderAPI_Transform(tool,t,True).Shape();t=gp_Trsf();t.SetTranslation(gp_Vec(0,-41.6,0));tool=BRepBuilderAPI_Transform(tool,t,True).Shape();a=cut(a,move(tool,m));save('revised-roll-outer-clearance',a,'pitch',[0,0],'metal support envelope','4mm corner bevel at motor support localX12/Z10. Servo mounting holes retained. Fabrication/strength pending.');print('VALID',len(parts))

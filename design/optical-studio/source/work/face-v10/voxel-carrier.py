@@ -1,0 +1,2 @@
+exec(open('work/face-v10/build.py').read().split("bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)")[0])
+bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);o=load(out/'carrier-outer-clear.stl');o.data.remesh_voxel_size=.1;o.data.remesh_voxel_adaptivity=0;o.data.use_remesh_preserve_volume=False;o.data.use_remesh_fix_poles=False;bpy.context.view_layer.objects.active=o;bpy.ops.object.voxel_remesh();print('remeshed',len(o.data.vertices),flush=True);print(export(o,'carrier-voxel'),flush=True)

@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import {Vector3,Ray,DoubleSide,BufferGeometry,BufferAttribute,Matrix4,Box3} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+import {cadEngine,kit} from '../adult-kit/load-model.mjs';
+import {basis,projectionPath,visiblePath,rayForUV} from '../../outputs/danya-simulator/src/optics.js';
+import {createStrayTracer} from '../../outputs/danya-simulator/src/stray-light.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/recentered-layout.json'));
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const geo=(p,i)=>new BufferGeometry().setAttribute('position',new BufferAttribute(read(p,Float32Array),3)).setIndex(new BufferAttribute(read(i,Uint32Array),1));
+const fg=geo('work/adult-kit/original-face.positions.bin','work/adult-kit/original-face-outer.indices.bin'),f=new MeshBVH(fg),h=new MeshBVH(geo('work/adult-kit/original-head.positions.bin','work/adult-kit/head-outer-original.indices.bin'));
+const fullHead=new MeshBVH(geo('work/torso-flat/shell/bevel-0.6.positions.bin','work/torso-flat/shell/bevel-0.6.indices.bin')),fullFace=new MeshBVH(geo('work/torso-flat/face-local-v2.positions.bin','work/torso-flat/face-local-v2.indices.bin'));
+const mask=fs.readFileSync('work/torso-flat/nominal-mask.bin'),trace=createStrayTracer(s,fullHead,fullFace,kit),b=basis(s.projector);let n=0,ghost=0,kinds={},routes={};for(let y=4;y<720;y+=8)for(let x=4;x<1280;x+=8){if(mask[y*1280+x]!==255)continue;const u=(x+.5)/1280,v=(y+.5)/720,chief=rayForUV(s,u,v),target=chief.at(350/chief.direction.dot(b.f),new Vector3());for(let k=0;k<16;k++){const radius=4*Math.sqrt((k+.5)/16),angle=k*2.399963229728653,origin=b.p.clone().addScaledVector(b.r,radius*Math.cos(angle)).addScaledVector(b.u,radius*Math.sin(angle)),o=trace(u,v,8,new Ray(origin,target.clone().sub(origin).normalize()));n++;kinds[o.kind]=(kinds[o.kind]||0)+1;if(o.kind==='face'){const route=o.route.join('>');routes[route]=(routes[route]||0)+1;if(route!=='foldMirror>mirror')ghost++;}}}const report={scope:'Conditional forward emitted bundle sweep: assumed pupil diameter 8mm at lens-front plane, assumed focus 350mm, native mask from radial face tested with smoothed face. Stride8,16 pupil samples, not actual projector validation.',n,ghost,kinds,routes};fs.writeFileSync('work/torso-flat/masked-recentered-audit.json',JSON.stringify(report,null,2));console.log(report);

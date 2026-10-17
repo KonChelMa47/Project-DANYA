@@ -1,0 +1,6 @@
+from pathlib import Path
+import shutil
+r=Path('outputs/danya-simulator');work=Path('work/unified-head')
+p=r/'src/projection-prototype.js';shutil.copyfile(p,work/'prototype-before-v5.js');s=p.read_text();s=s.replace("['head-upper','head-lower'].includes(p.name)?'smooth-head-v4/':p.name==='magnet-carrier'?'solid-seam-v2/':'assembly/'", "['head-upper','head-lower','magnet-carrier','face'].includes(p.name)?'unified-head-v5/':'assembly/'");s=s.replace("['head-upper','head-lower'].includes(p.name)?'smooth-head-v4/print/':p.name==='magnet-carrier'?'solid-seam-v2/print/':'print/'", "['head-upper','head-lower','magnet-carrier','face'].includes(p.name)?'unified-head-v5/print/':'print/'");s=s.replace('prototype-face-preview.js?revision=face-v12','prototype-face-preview.js?revision=unified-head-v5');p.write_text(s)
+p=r/'src/prototype-face-preview.js';shutil.copyfile(p,work/'face-preview-before-v5.js');s=p.read_text().replace("assets/projection-prototype/face-preview/","assets/projection-prototype/unified-head-v5/face-preview/");p.write_text(s)
+p=r/'projection-prototype.html';shutil.copyfile(p,work/'prototype-before-v5.html');s=p.read_text().replace('smooth-head-v4','unified-head-v5').replace('後頭部外面平滑版 v4','顔・支持枠・後頭部 v5');p.write_text(s)

@@ -1,0 +1,9 @@
+UPDATE: User approved installation and continuation. cadquery-ocp 7.7.2 installed in cad-venv. Official STEP meshed in cad-mesh. Actual engine includes flex and is larger than old box. Active work now in work/cad-internal; old output remains baseline until CAD validation passes.
+
+Current: internal-fold-v1 has been exported and applied to recommended-layout.json. All face coverage tests pass; engine envelope and 2 mirrors enclosed and no shell intersections after 1 mm engine pocket. Full TI kit CAD is downloaded in ti-cad; cadquery-ocp installation approval pending, and user choice of assembled kit vs separate board layout pending. Do not mark full physical implementation complete. Goal remains active. No new dependency has been installed.
+
+Install command proposed: existing Project-DANYA python -m venv work/internal-projector/cad-venv; then that venv python -m pip install cadquery-ocp. Must receive approval first.
+
+Current geometry generated from prepare-curved.mjs with argument 8 using dense-ranked-fold.json. Projector [-23.767325313,0,152.573608933], fold [-45.892857143,0,70], primary [-40,0,125], R35. No single-mirror internal candidate was accepted due short focus distance concern. Two-mirror data needs actual optical focus/aberrations verification.
+
+UI is in iab tab 2, saved internal view side. Current output docs INTERNAL_PROJECTOR_DESIGN.md describe limitations. 13 optics tests passed. 0.25 mm grid 309265 all lit, outer vertices+centroids255542 all lit, exterior exact111447, cross view34452 unchanged. Engine original approximate lens-body datum is NOT CAD validated. Actual kit envelope135x81.34x49.82 from TI assembly. STEP includes parts names and subassemblies for separation. Existing broad head shapes unchanged. Internal mesh has6 tiny intersections max0.0053377mm, closed/manifold2parts.

@@ -1,0 +1,7 @@
+import fs from 'node:fs';
+import {BufferGeometry,BufferAttribute,CylinderGeometry,Matrix4,Vector3} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const dir='work/torso-flat/v4-shaft-housing/',g=new BufferGeometry().setAttribute('position',new BufferAttribute(read(dir+'torso.positions.bin',Float32Array),3)).setIndex(new BufferAttribute(read(dir+'torso.indices.bin',Uint32Array),1)),bvh=new MeshBVH(g),shaft=new CylinderGeometry(4,4,170,64),hits=[];
+for(let yaw=-45;yaw<=45;yaw+=.5){const m=new Matrix4().makeRotationZ(yaw*Math.PI/180).setPosition(new Vector3(5,0,0));if(bvh.intersectsGeometry(shaft,m))hits.push(yaw);}
+const report={scope:'Pitch shaft ONLY, diameter 8mm length170mm; yaw sampled every .5deg. Pitch rotation leaves its Y axis unchanged, roll belongs to inner optical assembly. Analytical opening allowance 3mm supplements sampling. Motors/bearings/support frame and beam beyond intended mirror path unverified.',testedYawPoses:181,housingIntersections:hits,headVerticalGapMM:5.0167636684938515-4,opticalEnvelopeGapLowerBoundMM:9.446469120724252-4,bodyEnvelopeGapLowerBoundMM:18.473916969046243-4};fs.writeFileSync('work/torso-flat/v4-shaft-housing-audit.json',JSON.stringify(report,null,2));console.log(report);

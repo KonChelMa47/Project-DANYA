@@ -1,0 +1,33 @@
+{
+  "design": {
+    "externalShape": "original"
+  },
+  "counts": {
+    "lit": 309265
+  },
+  "oldCounts": {
+    "lit": 309265
+  },
+  "newHidden": 0,
+  "maxOriginalDepthChange": 0,
+  "originalMissing": 0,
+  "total": 309265,
+  "step": 0.25,
+  "uv": {
+    "min": [
+      0.3487002012793232,
+      0.37027099756408594
+    ],
+    "max": [
+      0.6496450632754388,
+      0.622986161419798
+    ]
+  },
+  "minPath": 213.4580377667168,
+  "maxPath": 271.54141187552904,
+  "mirrorHead": false,
+  "mirrorFace": false,
+  "bodyHead": false,
+  "bodyFace": false,
+  "miss": []
+}

@@ -1,0 +1,5 @@
+import fs from'node:fs';import{obs}from'./lift-route-check.mjs';
+const cx=-22.01616859436035,cy=.3457450866699219,rad=Math.PI/180,pmax=12*rad,rmax=6*rad,drop=6,normalize=t=>Math.atan2(Math.sin(t),Math.cos(t));let rows=[];
+for(const o of obs.filter(o=>o.name==='projector'||o.name.startsWith('projector-tray-t5'))){let best={z:Infinity};const a=o.g.attributes.position;
+for(let i=0;i<a.count;i++){const X=a.getX(i)-cx,B=a.getY(i)-cy,A=a.getZ(i)-drop-28;const rs=[-rmax,rmax],rr=normalize(Math.atan2(B,A)+Math.PI);if(rr>=-rmax&&rr<=rmax)rs.push(rr);for(const r of rs){const C=24+A*Math.cos(r)+B*Math.sin(r),ps=[0,pmax],pp=normalize(Math.atan2(-X,C)+Math.PI);if(pp>=0&&pp<=pmax)ps.push(pp);for(const p of ps){const z=4-X*Math.sin(p)+C*Math.cos(p);if(z<best.z)best={z,pitch:p/rad,roll:r/rad,vertex:i};}}}rows.push({name:o.name,...best});}
+rows.sort((a,b)=>a.z-b.z);fs.writeFileSync('work/buildable-bust-v10/drop-bottom-envelope.json',JSON.stringify({liftMM:8,dropMM:drop,scope:'Continuous mesh vertex minimum Z, endpoints and stationary extrema. Projector and receiver only. Candidate, not adopted.',rows},null,2));console.log(JSON.stringify(rows.slice(0,5)));

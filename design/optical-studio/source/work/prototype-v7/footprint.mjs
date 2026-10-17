@@ -1,0 +1,4 @@
+import fs from'node:fs';import*as T from'../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{projectionPath,basis}from'../../outputs/danya-simulator/src/optics.js';
+const r='outputs/danya-simulator/assets/projection-prototype',s=JSON.parse(fs.readFileSync(r+'/layout.json')),m=basis(s.mirror),b=fs.readFileSync('work/torso-flat/face-local-v2.positions.bin'),v=new Float32Array(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));let pts=[],missing=0;
+for(let i=0;i<v.length;i+=3){let p=projectionPath(s,new T.Vector3(v[i],v[i+1],v[i+2]+8));if(!p){missing++;continue;}let q=p.legs.at(-2).clone().sub(m.p);pts.push([q.dot(m.r),q.dot(m.u)]);}
+fs.writeFileSync(r+'/prototype-v7/footprint.json',JSON.stringify({samples:v.length/3,missing,points:pts}));console.log({samples:v.length/3,missing,bounds:[0,1].map(j=>[Math.min(...pts.map(p=>p[j]).slice(0,50000)),Math.max(...pts.map(p=>p[j]).slice(0,50000))])});

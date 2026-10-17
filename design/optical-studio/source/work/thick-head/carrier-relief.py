@@ -1,0 +1,4 @@
+exec(open('work/thick-head/thicken.py').read().split("head=loadpath(src/")[0])
+def direct(a,b,mode):
+ bpy.context.view_layer.objects.active=a;m=a.modifiers.new(mode,'BOOLEAN');m.operation=mode;m.solver='MANIFOLD';m.object=b;bpy.ops.object.modifier_apply(modifier=m.name);bpy.data.objects.remove(b,do_unlink=True)
+carrier=loadpath(out/'magnet-carrier.stl');bpy.ops.mesh.primitive_cube_add(size=1,location=(2.1,-73.3,172.5));box=bpy.context.object;box.dimensions=(6,6,14);bpy.ops.object.transform_apply(location=True,rotation=True,scale=True);direct(carrier,box,'INTERSECT');back=carrier.copy();back.data=carrier.data.copy();bpy.context.collection.objects.link(back);back.location.x=-.4;direct(carrier,back,'UNION');head=loadpath(out/'head-upper.stl');direct(head,carrier,'DIFFERENCE');print(export(head,'head-upper'),flush=True)

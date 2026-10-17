@@ -1,0 +1,1 @@
+import *as T from'../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{obs}from'./lift-route-check.mjs';const a=obs.find(o=>o.name==='trial-rear-chassis'),b=obs.find(o=>o.name==='motor-yaw'),p={},q={};a.g.boundsTree.closestPointToGeometry(b.hull,new T.Matrix4(),p,q);console.log(JSON.stringify({a:p,b:q}));

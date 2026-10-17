@@ -1,0 +1,28 @@
+{
+  "date": "2026-09-20T17:13:39.880Z",
+  "unitTests": 9,
+  "checks": [
+    "Full shell renders; initial rays reach face",
+    "Live Open Campus v2 framebuffer connected",
+    "Cutaway changes visibility without altering optical occlusion",
+    "Finite mirror aperture clips light when width shrinks",
+    "Z-constrained slider preserves X and Y",
+    "JSON export and import restore layout",
+    "Local MP4 playback feeds projector source",
+    "Narrow layout has no horizontal overflow",
+    "No browser JavaScript or WebGL errors"
+  ],
+  "initialMetrics": {
+    "counts": {
+      "face": 800,
+      "blocked": 2,
+      "mirror-miss": 141,
+      "escape": 0
+    },
+    "lo": 196.3106775112621,
+    "hi": 251.48923499946278,
+    "illuminatedVertices": 95221,
+    "revision": 2
+  },
+  "browserErrors": []
+}

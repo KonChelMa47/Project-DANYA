@@ -1,0 +1,103 @@
+{
+  "date": "2026-09-20T17:39:06.287Z",
+  "layout": {
+    "version": 1,
+    "projector": {
+      "position": [
+        -40,
+        -1.87,
+        0.47
+      ],
+      "rotation": [
+        10.96,
+        1.12,
+        0.31
+      ]
+    },
+    "mirror": {
+      "position": [
+        -22.52,
+        0.86,
+        178.53
+      ],
+      "rotation": [
+        178.7,
+        31.17,
+        -87.5
+      ],
+      "width": 80.9,
+      "height": 110.9
+    },
+    "optics": {
+      "throwRatio": 1.2,
+      "offset": 100,
+      "lumens": 220,
+      "reflectance": 0.9,
+      "transmission": 0.65
+    },
+    "aimRoll": 0.65,
+    "source": {
+      "kind": "live",
+      "rotation": 0,
+      "flipX": false,
+      "flipY": false
+    },
+    "display": {
+      "exposure": 1.4,
+      "rays": true,
+      "view": "outside"
+    },
+    "modelScale": 1
+  },
+  "coordinateUnits": "mm (1 coordinate unit assumed 1 mm)",
+  "sampling": {
+    "step": 0.5,
+    "samples": 77322,
+    "lit": 60654,
+    "coveragePercent": 78.44339256615194,
+    "definition": "Front-visible face, uniform projected-area grid; not total curved surface area"
+  },
+  "counts": {
+    "lit": 60654,
+    "mirrorClip": 8181,
+    "imageClip": 7936,
+    "firstLeg": 0,
+    "headSecond": 551,
+    "faceSelf": 0
+  },
+  "regions": {
+    "chin": {
+      "lit": 11535,
+      "total": 13660
+    },
+    "mouth": {
+      "lit": 17787,
+      "total": 19625
+    },
+    "nose-cheeks": {
+      "lit": 17351,
+      "total": 20737
+    },
+    "eyes": {
+      "lit": 11671,
+      "total": 14999
+    },
+    "forehead": {
+      "lit": 2310,
+      "total": 8301
+    }
+  },
+  "pathMin": 234.6012301447252,
+  "pathMax": 321.3609047913104,
+  "collisionChecks": {
+    "mirrorEnvelopeIntersectsHead": false,
+    "mirrorEnvelopeIntersectsFace": false,
+    "projectorEngineBoxIntersectsHead": false,
+    "projectorEngineBoxIntersectsFace": false
+  },
+  "notes": [
+    "Mirror tested using a bounding box W+2 mm, H+2 mm, 3.5 mm deep centered on reflecting plane.",
+    "Projector optical-engine visualization box checked; full evaluation boards and mounting brackets are not modeled.",
+    "100% coverage was not found; forehead and lateral rim remain unlit."
+  ]
+}

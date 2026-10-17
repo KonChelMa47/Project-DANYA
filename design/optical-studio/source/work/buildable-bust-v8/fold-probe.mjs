@@ -1,0 +1,1 @@
+import *as T from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';import{check}from'./route-check.mjs';for(let p of[[-39.3,9.65,-43.9],[-40,-3,-57],[-32,6,-57],[-35,9,-42],[-38,10,-39]])console.log(p,check(new T.SphereGeometry(3,12,8).translate(...p),3,['foldMirror-adjustment-plate']));

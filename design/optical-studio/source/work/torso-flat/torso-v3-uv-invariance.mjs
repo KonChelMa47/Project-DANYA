@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import {Vector3,Ray,DoubleSide,BufferGeometry,BufferAttribute,Matrix4,Box3} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+import {cadEngine,kit} from '../adult-kit/load-model.mjs';
+import {basis,projectionPath,visiblePath,rayForUV} from '../../outputs/danya-simulator/src/optics.js';
+import {createStrayTracer} from '../../outputs/danya-simulator/src/stray-light.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/torso-v3-layout.json'));
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const geo=(p,i)=>new BufferGeometry().setAttribute('position',new BufferAttribute(read(p,Float32Array),3)).setIndex(new BufferAttribute(read(i,Uint32Array),1));
+const fg=geo('work/adult-kit/original-face.positions.bin','work/adult-kit/original-face-outer.indices.bin'),f=new MeshBVH(fg),h=new MeshBVH(geo('work/adult-kit/original-head.positions.bin','work/adult-kit/head-outer-original.indices.bin'));
+const fullHead=new MeshBVH(geo('work/torso-flat/shell/bevel-0.6.positions.bin','work/torso-flat/shell/bevel-0.6.indices.bin')),fullFace=new MeshBVH(geo('work/torso-flat/face-local-v2.positions.bin','work/torso-flat/face-local-v2.indices.bin'));
+const base='outputs/danya-simulator/assets/torso-flat-study/',old=read(base+'face.projection-uv.bin',Float32Array),g=fullFace.geometry;let maxDifference=0,missing=0;for(let i=0;i<g.attributes.position.count;i++){const q=new Vector3().fromBufferAttribute(g.attributes.position,i),p=projectionPath(s,q);if(!p){missing++;continue;}maxDifference=Math.max(maxDifference,Math.abs(p.u-old[2*i]),Math.abs(p.v-old[2*i+1]));}const r={vertices:g.attributes.position.count,maxDifference,missing,scope:'UV invariance only. Collision/coverage is in separate full audit.'};fs.writeFileSync('work/torso-flat/torso-v3-uv-invariance.json',JSON.stringify(r,null,2));console.log(r);

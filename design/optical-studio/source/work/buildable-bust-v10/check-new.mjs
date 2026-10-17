@@ -1,0 +1,4 @@
+import fs from'node:fs';import {STLLoader}from'../../outputs/danya-simulator/node_modules/three/examples/jsm/loaders/STLLoader.js';import{check}from'./route-check.mjs';
+const root='outputs/danya-simulator/assets/buildable-bust-v10',names=process.argv.slice(2).filter(n=>n!=='--fixed'),st=process.argv.includes('--fixed')?0:3,results=[];
+for(const name of names){const b=fs.readFileSync(root+'/'+name+'.stl'),g=new STLLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));const ignore=name.startsWith('mirror-head-')?['printed-mirror-fixed-plate','printed-mirror-frame-nut-0','printed-mirror-frame-nut-1']:[];const r=check(g,st,ignore,true);results.push({name,...r});console.log(name,JSON.stringify(r));}
+fs.writeFileSync('work/buildable-bust-v10/new-part-check.json',JSON.stringify(results,null,2));

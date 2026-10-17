@@ -1,0 +1,8 @@
+import bpy,bmesh,json,numpy as np
+from pathlib import Path
+from mathutils import Vector
+r=Path.cwd();bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);bpy.ops.wm.stl_import(filepath=str(r/'outputs/danya-simulator/assets/head-connectors-v3/head-integrated.stl'));o=bpy.context.object;o.name='head';bm=bmesh.new();bm.from_mesh(o.data);bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=1e-5);bm.to_mesh(o.data);bm.free();v=np.array([v.co[:]for v in o.data.vertices]);print('NECK',v[v[:,2]<85].shape, np.quantile(v[v[:,2]<85,2],[0,.01,.05,.1,.5,1]).tolist(),flush=True)
+s=bpy.context.scene;s.render.engine='BLENDER_WORKBENCH';s.display.shading.light='STUDIO';s.display.shading.color_type='SINGLE';s.display.shading.single_color=(.7,.75,.73);s.display.shading.show_cavity=True;s.display.shading.cavity_type='BOTH';s.display.shading.show_shadows=True;s.display.shading.background_type='WORLD';s.world.color=(.065,.085,.1);s.render.resolution_x=1100;s.render.resolution_y=800;s.render.resolution_percentage=100
+bpy.ops.object.camera_add(location=(200,-160,140));cam=bpy.context.object;cam.rotation_euler=(Vector((-20,0,63))-cam.location).to_track_quat('-Z','Y').to_euler();cam.data.type='ORTHO';cam.data.ortho_scale=160;cam.data.clip_end=2000;s.camera=cam;s.render.filepath=str(r/'outputs/danya-simulator/assets/head-connectors-v3/neck-after.png');bpy.ops.render.render(write_still=True)
+
+cam.location=(350,-120,80);cam.rotation_euler=(Vector((-25,0,163))-cam.location).to_track_quat('-Z','Y').to_euler();cam.data.ortho_scale=350;s.render.filepath=str(r/'outputs/danya-simulator/assets/head-connectors-v3/head-connections.png');bpy.ops.render.render(write_still=True)

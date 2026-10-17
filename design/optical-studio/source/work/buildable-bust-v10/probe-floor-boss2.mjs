@@ -1,0 +1,2 @@
+import fs from 'node:fs';import {obs,check,cylinder}from './revised-complete-route-check.mjs';
+const ignore=obs.filter(o=>o.stage===0).map(o=>o.name);const rows=[];for(const [x,y]of[[20,-85],[20,85],[10,-90],[10,90],[0,-92],[0,92]]){const g=cylinder([x,y,-163.5],[x,y,-149.7],6.5);const row={x,y,...check(g,0,ignore,false)};rows.push(row);console.log(JSON.stringify(row));}fs.writeFileSync('work/buildable-bust-v10/floor-boss-candidates2.json',JSON.stringify({rows},null,2));

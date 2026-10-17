@@ -1,0 +1,2 @@
+exec(open('work/face-v10/build.py').read().split("bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)")[0])
+bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False);o=load(out/'head-upper-pockets.stl');bm=bmesh.new();bm.from_mesh(o.data);bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=.001);bmesh.ops.dissolve_degenerate(bm,edges=list(bm.edges),dist=.00001);bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces));bm.to_mesh(o.data);bm.free();print(export(o,'head-upper-final'),flush=True)

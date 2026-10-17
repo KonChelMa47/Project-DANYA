@@ -1,0 +1,5 @@
+import fs from 'node:fs';import {STLLoader} from '../../outputs/danya-simulator/node_modules/three/examples/jsm/loaders/STLLoader.js';import {obs,check,stage} from '../buildable-bust-v8/route-check.mjs';
+const root='outputs/danya-simulator/assets/buildable-bust-v9',parts=JSON.parse(fs.readFileSync(root+'/projector-tray-candidates.json')).parts,rows=[];
+const ignore=obs.filter(o=>o.name.startsWith('frame-')||o.name.startsWith('projector-')||o.name.startsWith('fastener-projector-')).map(o=>o.name);
+for(const p of parts){let b=fs.readFileSync(root+'/'+p.name+'.stl'),g=new STLLoader().parse(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));let r=check(g,3,ignore,true);rows.push({part:p.name,...r});if(r.hits.length||r.lightHits)console.log(p.name,JSON.stringify(r));}
+fs.writeFileSync(root+'/projector-tray-check.json',JSON.stringify({scope:'27poses against v8 retained non-frame CAD, actual projector/motor CAD and shell. All frame parts and old projector mounting parts omitted for redesign. Surface contact, sampled chief rays; no finite beam/continuous sweep. Pads intended to touch base, other projector contacts require investigation.',rows},null,2));

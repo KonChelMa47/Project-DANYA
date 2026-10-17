@@ -1,0 +1,10 @@
+from pathlib import Path
+import shutil
+r=Path('outputs/danya-simulator');out=r/'assets/projection-prototype/unified-head-v5';old=r/'assets/projection-prototype/smooth-head-v4'
+s=(old/'index.html').read_text().replace('smooth-head-v4','unified-head-v5').replace('DANYA-head-smooth-v4.zip','DANYA-head-complete-v5.zip').replace('DANYA 外面平滑版 v4','DANYA 頭部・顔・支持枠 v5').replace('HEAD v4','HEAD v5').replace('後頭部の上下2個 STL＋3MF ZIP','顔・支持枠・後頭部上下の4部品 ZIP').replace('背面の平面状の跡と、顔の合わせ目の不均一な段差を修正。外面を作り直し、内側の機構と中央分割を残しました。','後頭部だけでなく、顔の縁と磁石支持枠を含めた4部品を改修。支持枠が顔より張り出していた段差と、外面に重なった古い面を修正しました。').replace('v3：増肉の境界に段差や凹凸が残っていました。','v4：支持枠と顔の間にも段差が残っていました。').replace('v4：外面を再構成し、既存の支持枠（青）へ接続。顔と支持枠は同じ部品です。','v5：支持枠（青）と顔の縁も修正し、後頭部へつながる輪郭にしました。').replace('同じ色で組み合わせた外観。後頭部の2個だけを交換します。','同じ色で組み合わせた外観。顔・支持枠・後頭部上下の4部品が更新対象です。').replace('既存の支持枠へつながる厚みに移行','新しい支持枠へつながる厚みに移行').replace("'face':'../assembly/face.stl','magnet-carrier':'../solid-seam-v2/magnet-carrier.stl'","'face':'face.stl','magnet-carrier':'magnet-carrier.stl'")
+s=s.replace('<button id="assembly">','<button id="carrier">支持枠の内側</button><button id="assembly">').replace("document.querySelector('#assembly').onclick=", "document.querySelector('#carrier').onclick=()=>{for(const[n,m]of Object.entries(meshes))m.visible=n==='magnet-carrier';c.position.set(-630,0,180);orbit.update()};document.querySelector('#assembly').onclick=").replace('function pose(pos,inside=false){','function pose(pos,inside=false){meshes[\'head-upper\'].visible=true;meshes[\'head-lower\'].visible=true;')
+s=s.replace('<a href="print/head-upper.stl"','<a href="print/face.stl" download>顔STL</a> ／ <a href="print/magnet-carrier.stl" download>支持枠STL</a> ／ <a href="print/head-upper.stl"')
+s=s.replace('<h2>厚みと取り付け</h2>','<div class="grid"><div><img src="carrier-inside.png"><p>磁石支持枠の内側。磁石は接着固定です。</p></div><div><img src="head-inside.png"><p>鏡・支柱の固定部と中央接続部を残しています。</p></div></div><h2>厚みと取り付け</h2>')
+(out/'index.html').write_text(s)
+for n in ['assembled','assembled-side','back','side','head-inside','lower-inside','carrier-inside']:shutil.copyfile(Path('work/unified-head')/(n+'.png'),out/(n+'.png'))
+shutil.copyfile(old/'side.png',out/'before-side.png')

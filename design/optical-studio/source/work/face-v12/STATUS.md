@@ -1,0 +1,25 @@
+# v12 work in progress (NOT adopted)
+
+User approved upper smaller magnets, prioritizing natural Furhat-like appearance. Upper design now diameter3x1mm, face centers(42.3,+/-18.054,255), head(41,+/-18.054,255). Lower originals5.9x2.9 unchanged. No outer handles. Face+carrier glued unit removable +X. Neck opening used to press lower carrier; real access/retention untested.
+
+Current pipeline: build.py -> repair.py -> collar.py -> finalize.py -> relieve.py -> postfix.sh (MeshFix clean2iter/1inner) -> bridge.py -> simplify.py -> clip-head.py (EXACT intersect original convex envelope,use_self) -> postfix.sh -> checks.sh. Current exec83305 running last3. DO NOT ADOPT until ray/surface/removal/magnetfit/static/printgeometry verified.
+
+collar.py builds720point9station perimeter; rear extends8mm except upperregionZ>230 ramps to12mm. Also creates solid outer skin-envelope and intersects carrier to remove old protrusions. This resolved ugly small forehead cups/holes in render. covered.png from beforebridge/simplify/latestclip shows smooth natural rim, no external handles/cups; tiny seam on forehead. Need finalrerender.
+
+bridge.py recreates rear uppercups with roof stems(40,+/-18.054,257.8),3x4x3.6mm; wholehead then clipped to original envelope by clip-head.py. Ensure cups connected (component1) and no new optical/staticcontact.
+
+Earlier large magnets/forwardhousing candidate versions and reports are obsolete. Baseparts and activeUI stillv11. v12 has NOT been adopted. Read script names and reports timestamps beforeusing.
+
+Prepared notyetexecuted: package.py,adopt.py,finish-package.py,update-blend.py,update-ui.py. ASSEMBLY.md and DESIGN.md written inface-v12. adoptrequires strictsurface0,ray0,sweep0,minradialclearance>.1 and nonewstaticpairs vs work/face-v11/static-check.json. package outputsrelease assembly+print. Full/updateZIP generatedbyfinish-package. UI scripts replaceface-v11 refsandoldhandlesinstructions, creamhead/frameunifiedcolor. Updateface-previewmetadata verifiedRevisionv12, UVreusedonlyifunchangedscreen/layout andray0. ReuseIABtab33 browser2 (bindingtab) viaCUA, no newtab needed.
+
+Important Boolean MANIFOLD can silentlyfailnonmanifoldSTLimports; inspectlogs. clean(o) helps butmaynotfixall. EXACTselfcurrentwholeheadintersection slower. MeshFix can alter pockets; recheckmagnetfit andrays. simplify.py planarcleanup mayintroducemicroscopicnonmanifoldfaces,needsMeshFixandthenstrictsurface.
+
+Next afterexec83305: inspectstrict3surfaceJSON+7raysJSON; sweep-covered.mjs,static.mjs,magnet-fit.mjs final. package.py topology. Finalrenders thenadopt,finishpackage,blend,UIverification. No installers or subagents used.
+
+## Latest continuation 16:24
+Global exact clip-head.py was killed (too slow). Instead clip-local.py trimmed new roof stems using tiny outside-envelope tools. final-optical-trim.py removes new seat underside against cavity+.3. rebate-final.py reapplies anatomical rim clearance to new roofstems. Headupper then meshfix-rounded.py + local-repair.py (47faces,2holes) -> strictsurface0,ray0,component1. Lowerhead strict0,ray0,component1. All movingunit sweep0 to100mm and staticcontacts samev11; magnetfitsmin.1499mm (run16:23). Carrier still had6selfcrossings after initiallocalrepair; currentexec76752 runs final-local-loop.sh up to3iterations (Blenderlocalrepair ->roundedMeshFix ->strictsurface). PyTMesh fill_small_boundaries crashes forcarrier, doNOT use local-repair.py oncarrier; Blenderholes_fill+roundedMeshFix works. Mostrecentcarrierbeforeloop 1component0nonmanifold,ray0,6strictcrosses. Looponlytinyintersectpatchesat underchin/siderim.
+
+Need finalcarrier strict0, then ray/sweep/static/fit/package rerun becausechangedcarrier. Headerpartsunchanged. Re-rendercovered.png. Preparedreleaseupdate notadopted. Head/face exteriorrender now smoothband, noexternalpods/handles; tinyforeheadseam remains. packagepreviouspassall3onecomp0nonmanifold butobsoletecarrierandpossiblyhead? rerunlatest. final-local-loop onlychangescarrier. activeUI STILLv11. Do notforgetexecuteadopt+finishpackage+updateblend+updateui onlyaftervalidation.
+
+## RELEASE ADOPTED v12 2026-09-25 ~16:26 JST
+final-local-loop iteration1 resolved remainingcarrier6crossings: all3strictsurface0,component1,nonmanifold0. Finalcarrier rays0 and upperrays0; other5changedhardware rays0. Finalwithdrawalsweep0 over100mm(.25first15,1rest),static no new vs v11,magfitminimum>.1499. adopt.py succeeded:10STLpathsupdated,282otherSTLsunchanged; face/base/mirrors/layout unchanged. finish-package verified update/fullZIP and hashes. update-blend succeeded. update-ui succeeded; v12 in browser IABtab33 browser2. Video displayed, removal80mm and reset0 confirmed. Tiny UI followup release2 restoresraysenabledstate duringremoval/reset; nodecheckpassed. Finalreload pendingvisualdone. Actualstrength,magpull,andfingeraccessuntested. Finaldeliverlinks face-v12/face-v12-update-print.zip andprototype URLrevisionface-v12. Currentrenderscovered.png finalbeforelastmicrorepairvisuallysame; generatedagainafterfinalpackage beforeadopt. Finalcloseout notoverwritewitholdpipeline!

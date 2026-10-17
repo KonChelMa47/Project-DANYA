@@ -105,3 +105,7 @@ Open Campus Demo v1の環境変数は `open-campus-demo-v1/services/visitor_trac
 Daniil Malchenko  
 Kanazawa Institute of Technology  
 Department of Information and Computer Engineering
+
+## 頭部・外装・光学設計データ
+
+[DANYA設計アーカイブ](design/optical-studio/README.md)に、モデル・シミュレーター・組立ガイドと復元手順をまとめています。大容量データは同リポジトリのGitHub Releaseに保存しています。

@@ -1,0 +1,3 @@
+import fs from'node:fs';import {obs,check}from'./full-route-check.mjs';
+const rows=[];
+for(const a of obs.filter(o=>o.name.startsWith('frame-')||['yaw-motor-rear-stand','mirror-head-cradle'].includes(o.name))){const r=check(a.g,a.stage,[a.name],false);rows.push({name:a.name,...r});console.log(JSON.stringify(rows.at(-1)));fs.writeFileSync('outputs/danya-simulator/assets/buildable-bust-v10/full-frame-check.json',JSON.stringify({scope:'Full structural candidate, three-degree angular grid. All other parts included; mating contacts not automatically excused. Not continuous proof. Original head used, magnets excluded pending valid rebates.',rows},null,2));}

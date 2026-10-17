@@ -1,0 +1,116 @@
+{
+  "parts": {
+    "engine": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 8.022124766401667,
+      "vertexMinShellClearance": 2.899724370914224,
+      "bounds": [
+        [
+          -65.32061767578125,
+          -58.379981994628906,
+          123.71094512939453
+        ],
+        [
+          -6.7607293128967285,
+          14.446922302246094,
+          208.4774169921875
+        ]
+      ]
+    },
+    "mirror": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 12.402854416451143,
+      "vertexMinShellClearance": 7.4051990436202555,
+      "bounds": [
+        [
+          -58.2252082824707,
+          -27.03285789489746,
+          96.31464385986328
+        ],
+        [
+          -30.106685638427734,
+          26.88279151916504,
+          126.7013168334961
+        ]
+      ]
+    },
+    "fold": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 6.353969611596609,
+      "vertexMinShellClearance": 1.3481334923475918,
+      "bounds": [
+        [
+          -57.35329818725586,
+          -16.378246307373047,
+          54.5385856628418
+        ],
+        [
+          -34.173545837402344,
+          16.95391273498535,
+          67.86186218261719
+        ]
+      ]
+    },
+    "pre": {
+      "centerInside": true,
+      "exteriorIntersection": false,
+      "headIntersection": false,
+      "faceIntersection": false,
+      "vertexMinExteriorClearance": 3.9976452083325853,
+      "vertexMinShellClearance": 0.4999662073787045,
+      "bounds": [
+        [
+          -58.064697265625,
+          -37.92914581298828,
+          80.82715606689453
+        ],
+        [
+          -44.674156188964844,
+          -27.546222686767578,
+          120.0180435180664
+        ]
+      ]
+    }
+  },
+  "pairs": {
+    "engine-mirror": false,
+    "engine-fold": false,
+    "mirror-fold": false,
+    "engine-pre": false,
+    "mirror-pre": false,
+    "fold-pre": false
+  },
+  "externalEnvelope": {
+    "min": [
+      -91.88861846923828,
+      -72.27752685546875,
+      38.27775573730469
+    ],
+    "max": [
+      89.94198608398438,
+      72.326904296875,
+      242.48843383789062
+    ],
+    "sizeXYZ": [
+      181.83060455322266,
+      144.60443115234375,
+      204.21067810058594
+    ]
+  },
+  "thickMirrorRayFailures": 0,
+  "vertexContainment": {
+    "method": "All mesh vertices above neck plane, outward intersections in five axes; coupled with exterior triangle-intersection tests.",
+    "checkedVertices": 58714,
+    "outsideVertices": 0,
+    "outsideExamples": []
+  }
+}

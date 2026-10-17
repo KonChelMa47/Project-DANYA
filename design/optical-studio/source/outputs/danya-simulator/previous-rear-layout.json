@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "projector": {
+    "position": [
+      -40,
+      -1.87,
+      0.47
+    ],
+    "rotation": [
+      10.96,
+      1.12,
+      0.31
+    ]
+  },
+  "mirror": {
+    "position": [
+      -22.52,
+      0.86,
+      178.53
+    ],
+    "rotation": [
+      178.7,
+      31.17,
+      -87.5
+    ],
+    "width": 80.9,
+    "height": 110.9
+  },
+  "optics": {
+    "throwRatio": 1.2,
+    "offset": 100,
+    "lumens": 220,
+    "reflectance": 0.9,
+    "transmission": 0.65
+  },
+  "aimRoll": 0.65,
+  "source": {
+    "kind": "live",
+    "rotation": 0,
+    "flipX": false,
+    "flipY": false
+  },
+  "display": {
+    "exposure": 1.4,
+    "rays": true,
+    "view": "outside"
+  },
+  "modelScale": 1
+}

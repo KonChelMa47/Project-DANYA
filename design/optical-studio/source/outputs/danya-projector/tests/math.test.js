@@ -1,0 +1,7 @@
+import assert from 'node:assert/strict';
+import {defaults,anchors,fitTPS,evaluateTPS,warpField,homography,validQuad,validateState} from '../src/math.js';
+const s=defaults();s.deformFeatures=true;const identity=warpField(s,129);assert.ok(identity.minJ>.999);for(const [x,y]of[[.3,.4],[0,0],[1,1]]){const a=anchors(s),p=evaluateTPS(fitTPS(a.dst,a.src),x,y);assert.ok(Math.hypot(p[0]-x,p[1]-y)<1e-6);}
+s.features[0].dx=.015;const a=anchors(s),t=fitTPS(a.dst,a.src),f=s.features[0],p=evaluateTPS(t,f.x+f.dx,f.y);assert.ok(Math.hypot(p[0]-f.x,p[1]-f.y)<1e-5);const neighbor=evaluateTPS(t,f.x+.1,f.y+.03);assert.ok(Math.abs(neighbor[0]-(f.x+.1))>1e-5);assert.ok(warpField(s,129).minJ>0);
+const h=homography(s.calibration.corners);s.calibration.corners.forEach(([x,y],i)=>{const d=h[2]*x+h[5]*y+h[8];const p=[(h[0]*x+h[3]*y+h[6])/d,(h[1]*x+h[4]*y+h[7])/d];assert.ok(Math.hypot(p[0]-[0,1,1,0][i],p[1]-[0,0,1,1][i])<1e-6);});assert.equal(validQuad([[0,0],[1,1],[1,0],[0,1]]),false);const bad=defaults();bad.deformFeatures=true;bad.features[0].dx=.29;assert.throws(()=>warpField(bad,129));bad.features[0].dx=NaN;assert.throws(()=>validateState(bad));console.log('PASS: identity, exact landmarks, surrounding deformation, Jacobian, homography, invalid input');
+
+const independent=defaults();independent.features[0].dx=.2;assert.ok(warpField(independent,129).minJ>.999);console.log('PASS: large rigid feature movement does not fold or reject the background map');

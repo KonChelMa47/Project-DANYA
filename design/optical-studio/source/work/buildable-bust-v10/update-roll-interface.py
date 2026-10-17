@@ -1,0 +1,7 @@
+exec(open('work/buildable-bust-v9/build-motor-candidates.py').read().split('for d,parent')[0])
+from OCP.STEPControl import STEPControl_Reader
+out=Path('outputs/danya-simulator/assets/buildable-bust-v10');parts=[];d=json.load(open(out/'drive-layout.json'))['motors'][2];m=qm(d['quaternion'],d['tip']);r=STEPControl_Reader();r.ReadFile(str(out/'frame-roll-motor-support.step'));r.TransferRoots();a=r.OneShape();a=fuse(a,move(box(12,-48.6,-10,17,6,20),m));a=cut(a,move(box(-5,-42.6,-18,50,50,36),m))
+for z in [-5,5]:a=cut(a,move(cy(1.7,[20.5,-75,z],[0,1,0],32.5),m));a=cut(a,move(cy(3.2,[20.5,-75,z],[0,1,0],28.4),m))
+save('trial-roll-support',a,'pitch',[0,0],'interface geometry candidate','Updated two M3 rear mount interface. Existing6mm metal support route retained; stock-joint/print fabrication details still pending. Case clearance protected by rear plane cut.')
+for i,z in enumerate([-5,5]):sv('trial-roll-frame-bolt-'+str(i),fuse(cy(1.5,[20.5,-46.6,z],[0,1,0],8),cy(2.75,[20.5,-49.6,z],[0,1,0],3)),'pitch',m,'M3x8','Envelope, rear captive nuts retained.')
+(out/'trial-roll-interface.json').write_text(json.dumps({'status':'interface clearance candidate','parts':parts},indent=2));p=out/'trial-structural-candidate.json';data=json.load(open(p));names=['frame-roll-motor-support']+[r['name']for r in parts];data['parts']=[r for r in data['parts']if r['name']not in names]+parts;p.write_text(json.dumps(data,indent=2));print('VALID',len(parts))

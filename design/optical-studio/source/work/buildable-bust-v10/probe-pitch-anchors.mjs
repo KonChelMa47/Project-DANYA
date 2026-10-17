@@ -1,0 +1,1 @@
+import fs from'node:fs';import{checkRod}from'./mount-routing-check.mjs';let rows=[];for(let x of[-50,-35,-10,5])for(let z of[-20,-15,15]){let a=[x,48,z],b=[x,58,z];let r={start:a,end:b,...checkRod(a,b,1,[],4)};rows.push(r);console.log(JSON.stringify(r));}fs.writeFileSync('work/buildable-bust-v10/pitch-anchor-probes.json',JSON.stringify(rows,null,2));

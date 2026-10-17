@@ -1,0 +1,8 @@
+import bpy,bmesh,numpy as np,json
+from pathlib import Path
+from mathutils import Matrix,Vector
+p=Path(__file__).resolve().parent;s=json.loads((p/'design.json').read_text())['state'];bpy.ops.object.select_all(action='SELECT');bpy.ops.object.delete(use_global=False)
+v=np.fromfile(p/'head-before-pocket.positions.bin','<f4').reshape(-1,3);f=np.fromfile(p/'head-before-pocket.indices.bin','<u4').reshape(-1,3);m=bpy.data.meshes.new('head');m.from_pydata(v.tolist(),[],f.tolist());m.update();o=bpy.data.objects.new('head',m);bpy.context.collection.objects.link(o)
+bpy.ops.mesh.primitive_cube_add(size=1);c=bpy.context.object;c.dimensions=(58.97,23,82.35);a=[x*np.pi/180 for x in s['projector']['rotation']];r=Matrix.Rotation(a[0],3,'X')@Matrix.Rotation(a[1],3,'Y')@Matrix.Rotation(a[2],3,'Z');c.rotation_mode='QUATERNION';c.rotation_quaternion=r.to_quaternion();c.location=Vector(s['projector']['position'])+r@Vector((0,-7,-42))
+bpy.context.view_layer.objects.active=o;mod=o.modifiers.new('Engine clearance 1 mm','BOOLEAN');mod.operation='DIFFERENCE';mod.solver='EXACT';mod.object=c;bpy.ops.object.modifier_apply(modifier=mod.name)
+bm=bmesh.new();bm.from_mesh(o.data);bmesh.ops.remove_doubles(bm,verts=list(bm.verts),dist=1e-7);bmesh.ops.dissolve_degenerate(bm,edges=list(bm.edges),dist=1e-7);bmesh.ops.recalc_face_normals(bm,faces=list(bm.faces));bm.to_mesh(o.data);bm.free();o.data.calc_loop_triangles();v=np.empty(len(o.data.vertices)*3,np.float32);o.data.vertices.foreach_get('co',v);f=np.empty(len(o.data.loop_triangles)*3,np.int32);o.data.loop_triangles.foreach_get('vertices',f);v.astype('<f4').tofile(p/'head.positions.bin');f.astype('<u4').tofile(p/'head.indices.bin');print(len(v)//3,len(f)//3,flush=True)

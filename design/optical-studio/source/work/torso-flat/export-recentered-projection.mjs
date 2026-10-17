@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import {Vector3,Ray,DoubleSide,BufferGeometry,BufferAttribute,Matrix4,Box3} from '../../outputs/danya-simulator/node_modules/three/build/three.module.js';
+import {MeshBVH} from '../../outputs/danya-simulator/node_modules/three-mesh-bvh/build/index.module.js';
+import {cadEngine,kit} from '../adult-kit/load-model.mjs';
+import {basis,projectionPath,visiblePath,rayForUV} from '../../outputs/danya-simulator/src/optics.js';
+import {createStrayTracer} from '../../outputs/danya-simulator/src/stray-light.js';
+const s=JSON.parse(fs.readFileSync('work/torso-flat/recentered-layout.json'));
+const read=(p,T)=>{const b=fs.readFileSync(p);return new T(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));};
+const geo=(p,i)=>new BufferGeometry().setAttribute('position',new BufferAttribute(read(p,Float32Array),3)).setIndex(new BufferAttribute(read(i,Uint32Array),1));
+const fg=geo('work/adult-kit/original-face.positions.bin','work/adult-kit/original-face-outer.indices.bin'),f=new MeshBVH(fg),h=new MeshBVH(geo('work/adult-kit/original-head.positions.bin','work/adult-kit/head-outer-original.indices.bin'));
+const fullHead=new MeshBVH(geo('work/torso-flat/shell/bevel-0.6.positions.bin','work/torso-flat/shell/bevel-0.6.indices.bin')),fullFace=new MeshBVH(geo('work/torso-flat/face-local-v2.positions.bin','work/torso-flat/face-local-v2.indices.bin'));
+const g=fullFace.geometry,uv=new Float32Array(g.attributes.position.count*2),lit=new Float32Array(g.attributes.position.count);let clear=0;for(let i=0;i<g.attributes.position.count;i++){const q=new Vector3().fromBufferAttribute(g.attributes.position,i),p=projectionPath(s,q);if(p){uv[2*i]=p.u;uv[2*i+1]=p.v;lit[i]=visiblePath({...s,projector:{...s.projector,geometry:'ti-engine-rd'}},q,fullHead,fullFace,p)?1:0;if(lit[i])clear++;}}const dest='work/torso-flat/recentered-projection/';fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(dest+'face.projection-uv.bin',Buffer.from(uv.buffer));fs.writeFileSync(dest+'face.illuminated.bin',Buffer.from(lit.buffer));fs.copyFileSync('work/adult-kit/original-face-outer.indices.bin',dest+'face.outer.indices.bin');fs.writeFileSync(dest+'projection-metadata.json',JSON.stringify({layout:s,vertices:g.attributes.position.count,clear,scope:'Planned chief-path geometric preview only. Finite pupil, transmission, brightness, focus and material scattering are not rendered.'}));console.log({vertices:g.attributes.position.count,clear});

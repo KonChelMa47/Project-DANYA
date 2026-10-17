@@ -1,0 +1,51 @@
+{
+  "head": {
+    "vertices": 216530,
+    "triangles": 433060,
+    "bounds": [
+      [
+        -91.88861846923828,
+        -72.27752685546875,
+        38.27775573730469
+      ],
+      [
+        50.63548278808594,
+        72.326904296875,
+        242.48843383789062
+      ]
+    ],
+    "boundaryEdges": 0,
+    "nonManifoldEdges": 0,
+    "components": [
+      216530
+    ],
+    "minTriangleArea": 3.7617474895408855e-10,
+    "tinyTriangles": 13,
+    "signedVolume": 302216.9246562647
+  },
+  "face": {
+    "vertices": 171284,
+    "triangles": 342564,
+    "bounds": [
+      [
+        7.34984016418457,
+        -64.8176498413086,
+        43.08076858520508
+      ],
+      [
+        89.94198608398438,
+        65.22648620605469,
+        221.02223205566406
+      ]
+    ],
+    "boundaryEdges": 0,
+    "nonManifoldEdges": 0,
+    "components": [
+      171284
+    ],
+    "minTriangleArea": 9.431757146122988e-08,
+    "tinyTriangles": 0,
+    "signedVolume": 35183.2039575131
+  },
+  "exactSharedVertices": 1382
+}
