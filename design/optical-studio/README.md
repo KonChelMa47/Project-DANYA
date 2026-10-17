@@ -1,45 +1,33 @@
-# DANYA optical / mechanical design archive
+# DANYA 頭部・外装・光学設計
 
-2026-10-17: preserved the DANYA design workspace previously located at
-`~/Documents/Codex/2026-09-21/bl` before removing the local workspace to free disk space.
-The existing avatar application in this repository remains separate and unchanged.
+ローカルの旧作業フォルダを整理するため、2026-10-17に最新版と必要なデータを集約しました。全履歴ではなく、現在のモデル・実行に必要なデータを残す方針です。
 
-## Contents
+## ダウンロード
 
-- `source/`: browsable copies of source code and documents under 1 MiB, preserving original relative paths. Generated work/asset JSON is kept in the archive only. This is a reference subset, not a complete runnable installation.
-- `manifest.json`: SHA-256 and byte size of every regular file, plus all symbolic-link targets in the complete workspace.
-- `archive-parts.json`: SHA-256 and sizes of the split compressed archive.
-- [Complete workspace release](https://github.com/KonChelMa47/Project-DANYA/releases/tag/danya-design-20261017): all models, STL/Blender files, simulation assets, source, guides, historical iterations and existing dependencies. Concatenate the parts before extraction.
+[最新版保存セット（GitHub Release）](https://github.com/KonChelMa47/Project-DANYA/releases/tag/danya-design-20261017)
 
-## What to open after restoration
-
-Start with `bl/START_HERE.html` and `bl/00_CURRENT/`.
-The latter consists of links, not separate copies:
-
-- Head: face, magnet carrier, upper/lower back, unified-head-v5 package.
-- Prototype: complete-latest all-parts package.
-- Apps: optical simulator and comparison browser projector.
-- Guides: prototype and mirror assembly PDFs; read the head-v5 change notes too.
-
-The optical simulator README records unresolved optical feasibility and hardware verification issues. These files are preserved design work, not validated manufacturing instructions.
-
-## Restore
-
-Download every `danya-design-20261017.tar.gz.part*` asset and `SHA256SUMS`
-from the release into one empty directory, then run:
+`DANYA-current-20261017.tar.gz` と `CURRENT-SHA256SUMS` を同じフォルダに保存して実行します。
 
 ```sh
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c CURRENT-SHA256SUMS
 mkdir restored
-cat danya-design-20261017.tar.gz.part* | tar -xzf - -C restored
+ tar -xzf DANYA-current-20261017.tar.gz -C restored
 ```
 
-Do not extract over an existing workspace. The archive contains the original `bl/`
-layout and symlinks. Some historical scripts use absolute paths, and the link to
-`Project-DANYA/open-campus-demo-v2` expects the original workspace location.
-For full compatibility, restore `bl` to `~/Documents/Codex/2026-09-21/bl` and
-keep this repository at `~/Documents/Project-DANYA`, or adjust those paths first.
-The simulator also accepts `server.py --project /path/to/Project-DANYA`.
+## 保存したもの
 
-`manifest.json` is the authoritative inventory for integrity checks; the archive
-preserves historical versions to avoid losing unique design data during cleanup.
+- `models/`：unified-head-v5の全印刷部品セット。頭部4部品は旧作業フォルダの最新版STLとSHA-256が一致。ZIP内に3MF、検証結果、組立資料も含みます。
+- `guides/`：試作機・鏡の組立説明。頭部形状はHEAD-V5.mdを優先してください。
+- `simulator/`：光学シミュレーターのメイン画面、対応するシェル形状、投影機形状、既存JavaScript依存パッケージ。`python3 server.py --no-avatar` で起動できます。既存のProject-DANYAと連携する場合は `--project /path/to/Project-DANYA` を指定します。
+- `projector/`：ブラウザー投影アプリ。`python3 server.py` で起動できます。
+- Git内の `source/`：旧作業フォルダのソース・生成スクリプト・調査資料。1MiB未満の対象テキストを保存した参照用コピーです。生成されたwork/assetsのJSONは省略しています。過去のスクリプトが必要とする旧版のバイナリ中間データは含みません。
+
+## 確認と制約
+
+- `current-manifest.json`：今回保存したセットの各ファイルのSHA-256とサイズ。
+- `current-archive.json`：配布アーカイブのSHA-256とサイズ。
+- `original-workspace-inventory.json`：削除前の全ファイル・リンクの目録。これは全ファイルの保存を意味しません。
+- シミュレーターの既存テスト22件と投影アプリの既存テスト1件は通過。
+- 古い試作・計算キャッシュ・重複モデルは保存対象から除外。シミュレーターの過去の個別検討ページ用アセットは含みません。メイン画面の光学シミュレーターを対象としています。
+- 実機での光学性能や製造性の検証は未完了です。元の資料に記載された制約を引き継ぎます。
+- 既存のアバター本体と未コミットの実機調整変更は変更していません。
